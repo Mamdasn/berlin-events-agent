@@ -16,8 +16,7 @@
           Type=oneshot
           TimeoutStartSec=0
           WorkingDirectory=/var/tmp/compose/stack_a
-          ExecStart=/usr/bin/docker compose run --rm --no-deps \
-            berlin-events-agent python -m agent.retrieval.backfill
+          ExecStart=/usr/bin/docker compose exec -T berlin-events-agent python -m agent.retrieval.backfill
       become: true
       when: stack_name == "stack_a"
 
@@ -49,8 +48,7 @@
 
     - name: Run berlin-agent embedding backfill once
       ansible.builtin.command:
-        cmd: docker compose run --rm --no-deps \
-          berlin-events-agent python -m agent.retrieval.backfill
+        cmd: docker compose exec -T berlin-events-agent python -m agent.retrieval.backfill
         chdir: /var/tmp/compose/stack_a
       register: backfill_result
       retries: 12
