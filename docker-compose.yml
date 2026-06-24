@@ -1,0 +1,31 @@
+services:
+  berlin-events-agent:
+    build: .
+    image: sfarhad/berlin-events-agent:0.0.0
+    container_name: berlin-events-agent
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      ADMIN_PW_HASH: ${ADMIN_PW_HASH}
+      ADMIN_TOTP_SECRET: ${ADMIN_TOTP_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      EDITOR_NAME: ${EDITOR_NAME:-editor}
+      EMBED_INDEX_PATH: /app/data/embeddings.npz
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+    volumes:
+      - agent_data:/app/data
+    networks:
+      - edge_net
+    expose:
+      - "8000"
+
+networks:
+  edge_net:
+    external: true
+
+volumes:
+  agent_data:

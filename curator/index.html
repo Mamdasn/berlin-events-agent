@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Editor's Choice — Curation</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Editor's Choice <span class="brand-tag">curation agent</span></div>
+    <div class="topbar-actions">
+      <button id="featured-toggle" class="ghost-btn">Featured</button>
+      <button id="logout-btn" class="ghost-btn">Sign out</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="chat">
+      <div id="messages" class="messages" aria-live="polite"></div>
+
+      <form id="ask-form" class="composer">
+        <textarea id="ask-input" rows="1"
+                  placeholder="Ask the agent — e.g. the most unusual cultural event this weekend"></textarea>
+        <button type="submit" id="ask-btn">Send</button>
+      </form>
+    </section>
+
+    <aside id="featured-panel" class="featured" hidden>
+      <div class="featured-head">
+        <h2>Featured events</h2>
+        <button id="featured-close" class="ghost-btn">Close</button>
+      </div>
+      <div id="featured-list" class="featured-list"></div>
+    </aside>
+  </main>
+
+  <template id="msg-user">
+    <div class="msg msg-user"><div class="bubble"></div></div>
+  </template>
+
+  <template id="msg-agent">
+    <div class="msg msg-agent">
+      <div class="bubble"></div>
+      <div class="tools" hidden></div>
+    </div>
+  </template>
+
+  <template id="proposal-card">
+    <div class="proposal">
+      <div class="proposal-head">Proposed for Editor's Choice</div>
+      <div class="proposal-events"></div>
+      <label class="proposal-note">
+        Note (optional)
+        <input type="text" class="note-input" placeholder="Why this is featured" />
+      </label>
+      <div class="proposal-actions">
+        <button class="approve-btn">Approve</button>
+        <button class="reject-btn ghost-btn">Reject</button>
+      </div>
+    </div>
+  </template>
+
+  <template id="event-row">
+    <div class="event-row">
+      <div class="event-title"></div>
+      <div class="event-meta"></div>
+    </div>
+  </template>
+
+  <script src="/chat.js"></script>
+</body>
+</html>
