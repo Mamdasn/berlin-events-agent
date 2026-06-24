@@ -16,15 +16,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src ./src
 COPY curator ./curator
-COPY scripts ./scripts
 COPY wsgi.py .
 
 RUN mkdir -p /app/data
 
 EXPOSE 8000
 
-CMD ["gunicorn", "wsgi:app", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--workers", "2", \
-     "--bind", "0.0.0.0:8000", \
-     "--timeout", "120"]
+CMD python -c "from agent import secret_store; secret_store.get_session_secret()" \
+    && exec gunicorn wsgi:app \
+       --worker-class uvicorn.workers.UvicornWorker \
+       --workers 2 \
+       --bind 0.0.0.0:8000 \
+       --timeout 120

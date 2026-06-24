@@ -1,10 +1,9 @@
-import hashlib
-import hmac
 import json
 import secrets
 import time
 from pathlib import Path
 
+import pyotp
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import (
     FileResponse,
@@ -15,6 +14,8 @@ from fastapi.responses import (
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from starlette.concurrency import run_in_threadpool
 
+from agent import secret_store
+from agent._password import verify_password
 from agent.config import config
 from agent.db.repository import events
 
@@ -22,10 +23,19 @@ CURATOR_DIR = Path(__file__).resolve().parents[2] / "curator"
 SESSION_PREFIX = "ec:session:"
 
 app = FastAPI(title="Editor's Choice curation agent")
-serializer = URLSafeTimedSerializer(config.SESSION_SECRET, salt="ec-session")
 
+_serializer = None
 _redis = None
 _mem_sessions = {}
+
+
+def _get_serializer():
+    global _serializer
+    if _serializer is None:
+        _serializer = URLSafeTimedSerializer(
+            secret_store.get_session_secret(), salt="ec-session"
+        )
+    return _serializer
 
 
 def _store():
@@ -47,14 +57,14 @@ def create_session():
         store.setex(SESSION_PREFIX + sid, config.SESSION_TTL_SECONDS, "1")
     else:
         _mem_sessions[sid] = time.time() + config.SESSION_TTL_SECONDS
-    return serializer.dumps(sid)
+    return _get_serializer().dumps(sid)
 
 
 def read_session(cookie):
     if not cookie:
         return None
     try:
-        sid = serializer.loads(cookie, max_age=config.SESSION_TTL_SECONDS)
+        sid = _get_serializer().loads(cookie, max_age=config.SESSION_TTL_SECONDS)
     except (BadSignature, SignatureExpired):
         return None
     store = _store()
@@ -71,7 +81,7 @@ def destroy_session(cookie):
     if not cookie:
         return
     try:
-        sid = serializer.loads(cookie, max_age=config.SESSION_TTL_SECONDS)
+        sid = _get_serializer().loads(cookie, max_age=config.SESSION_TTL_SECONDS)
     except (BadSignature, SignatureExpired):
         return
     store = _store()
@@ -81,25 +91,14 @@ def destroy_session(cookie):
         _mem_sessions.pop(sid, None)
 
 
-def verify_password(password, stored):
-    try:
-        scheme, iterations, salt, digest = stored.split("$")
-    except ValueError:
+def verify_totp(code, secret=None):
+    if not code:
         return False
-    if scheme != "pbkdf2_sha256":
+    if secret is None:
+        secret = secret_store.get_active_totp_secret()
+    if not secret:
         return False
-    derived = hashlib.pbkdf2_hmac(
-        "sha256", password.encode(), bytes.fromhex(salt), int(iterations)
-    )
-    return hmac.compare_digest(derived.hex(), digest)
-
-
-def verify_totp(code):
-    if not code or not config.ADMIN_TOTP_SECRET:
-        return False
-    import pyotp
-
-    return pyotp.TOTP(config.ADMIN_TOTP_SECRET).verify(code, valid_window=1)
+    return pyotp.TOTP(secret).verify(code, valid_window=1)
 
 
 async def require_session(request: Request):
@@ -142,6 +141,20 @@ async def agent_resume_events(thread_id, proposal_id, decision, note):
         yield name, data
 
 
+def _set_session():
+    response = JSONResponse({"ok": True})
+    response.set_cookie(
+        config.SESSION_COOKIE,
+        create_session(),
+        max_age=config.SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=config.COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -150,7 +163,7 @@ async def health():
 @app.get("/")
 async def root(request: Request):
     if not read_session(request.cookies.get(config.SESSION_COOKIE)):
-        return RedirectResponse("/login.html", status_code=302)
+        return RedirectResponse("login.html", status_code=302)
     return FileResponse(CURATOR_DIR / "index.html")
 
 
@@ -169,28 +182,46 @@ async def chat_js():
     return FileResponse(CURATOR_DIR / "chat.js")
 
 
+@app.get("/qrcode.js")
+async def qrcode_js():
+    return FileResponse(CURATOR_DIR / "qrcode.min.js")
+
+
 @app.post("/login")
 async def login(request: Request):
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Bad request."}, status_code=400)
+
     password = body.get("password") or ""
     code = (body.get("code") or "").strip()
 
-    if not verify_password(password, config.ADMIN_PW_HASH) or not verify_totp(code):
-        return JSONResponse(
-            {"error": "Wrong password or code."}, status_code=401
-        )
+    if not verify_password(password, config.ADMIN_PW_HASH):
+        return JSONResponse({"error": "Wrong password."}, status_code=401)
 
-    response = JSONResponse({"ok": True})
-    response.set_cookie(
-        config.SESSION_COOKIE,
-        create_session(),
-        max_age=config.SESSION_TTL_SECONDS,
-        httponly=True,
-        secure=config.COOKIE_SECURE,
-        samesite="lax",
-        path="/",
-    )
-    return response
+    active_secret = secret_store.get_active_totp_secret()
+    if not active_secret:
+        pending = secret_store.get_pending_totp_secret()
+        if not code:
+            if not pending:
+                pending = pyotp.random_base32()
+                secret_store.set_pending_totp_secret(pending)
+            uri = pyotp.TOTP(pending).provisioning_uri(
+                name=config.EDITOR_NAME, issuer_name="Berlin Events Curator"
+            )
+            return JSONResponse({"enroll": True, "otpauth_uri": uri, "secret": pending})
+
+        if pending and verify_totp(code, pending):
+            secret_store.promote_pending_totp()
+            return _set_session()
+
+        secret_store.clear_pending_totp()
+        return JSONResponse({"error": "Wrong code. Try again."}, status_code=401)
+
+    if not verify_totp(code, active_secret):
+        return JSONResponse({"error": "Wrong code."}, status_code=401)
+    return _set_session()
 
 
 @app.post("/logout")

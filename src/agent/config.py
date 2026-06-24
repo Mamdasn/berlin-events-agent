@@ -9,10 +9,12 @@ class Config:
     AGENT_REDIS_DB_MEMORY = int(os.environ.get("AGENT_REDIS_DB_MEMORY", "3"))
     AGENT_REDIS_DB_CACHE = int(os.environ.get("AGENT_REDIS_DB_CACHE", "4"))
 
-    SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
+    COOKIE_SESSION_SECRET = os.environ.get("COOKIE_SESSION_SECRET", "")
     SESSION_COOKIE = os.environ.get("SESSION_COOKIE", "ec_session")
     SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", "43200"))
     COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
+
+    SECRET_STORE_PATH = os.environ.get("SECRET_STORE_PATH", "/app/data/secrets.json")
 
     ADMIN_PW_HASH = os.environ.get("ADMIN_PW_HASH", "")
     ADMIN_TOTP_SECRET = os.environ.get("ADMIN_TOTP_SECRET", "")
