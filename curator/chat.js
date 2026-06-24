@@ -148,7 +148,7 @@ async function send(url, body) {
     });
 
     if (res.status === 401) {
-      window.location.assign("/login.html");
+      window.location.assign("login.html");
       return;
     }
     if (!res.ok || !res.body) {
@@ -168,11 +168,11 @@ async function send(url, body) {
 }
 
 function ask(text) {
-  send("/ask/stream", { message: text, thread_id: threadId });
+  send("ask/stream", { message: text, thread_id: threadId });
 }
 
 function resume(proposalId, decision, note) {
-  send("/resume", {
+  send("resume", {
     thread_id: threadId,
     proposal_id: proposalId,
     decision,
@@ -205,9 +205,9 @@ input.addEventListener("keydown", (e) => {
 async function loadFeatured() {
   featuredList.textContent = "Loading…";
   try {
-    const res = await fetch("/editors-choice");
+    const res = await fetch("editors-choice");
     if (res.status === 401) {
-      window.location.assign("/login.html");
+      window.location.assign("login.html");
       return;
     }
     const data = await res.json();
@@ -250,7 +250,7 @@ function renderFeatured(items) {
 
 async function removeFeatured(eventId, row) {
   try {
-    const res = await fetch("/editors-choice/" + encodeURIComponent(eventId), {
+    const res = await fetch("editors-choice/" + encodeURIComponent(eventId), {
       method: "DELETE",
     });
     if (res.ok) row.remove();
@@ -273,6 +273,6 @@ featuredClose.addEventListener("click", () => {
 });
 
 logoutBtn.addEventListener("click", async () => {
-  await fetch("/logout", { method: "POST" }).catch(() => {});
-  window.location.assign("/login.html");
+  await fetch("logout", { method: "POST" }).catch(() => {});
+  window.location.assign("login.html");
 });

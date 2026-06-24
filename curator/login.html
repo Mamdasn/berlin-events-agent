@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
   <title>Editor's Choice — Sign in</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body class="login-page">
   <main class="login-card">
@@ -16,42 +16,83 @@
       <label for="password">Password</label>
       <input id="password" name="password" type="password" required autofocus />
 
+      <div id="enroll-panel" hidden>
+        <p class="enroll-info">Scan this QR code with your authenticator app, then enter the 6-digit code below.</p>
+        <div id="qrcode"></div>
+        <p class="enroll-secret-label">Or enter this key manually:</p>
+        <code id="totp-secret" class="enroll-secret"></code>
+      </div>
+
       <label for="code">Authenticator code</label>
       <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]*"
-             maxlength="6" placeholder="6 digits" required />
+             maxlength="6" placeholder="6 digits" />
 
       <button type="submit" id="login-btn">Sign in</button>
       <p id="login-error" class="login-error" role="alert" hidden></p>
     </form>
   </main>
 
+  <script src="qrcode.js"></script>
   <script>
     const form = document.getElementById("login-form");
     const btn = document.getElementById("login-btn");
     const err = document.getElementById("login-error");
+    const enrollPanel = document.getElementById("enroll-panel");
+    const qrContainer = document.getElementById("qrcode");
+    const secretDisplay = document.getElementById("totp-secret");
+    const pwInput = document.getElementById("password");
+    const codeInput = document.getElementById("code");
+
+    let isEnrolling = false;
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       err.hidden = true;
       btn.disabled = true;
-      btn.textContent = "Checking…";
+      btn.textContent = "Checking\u2026";
 
       try {
-        const res = await fetch("/login", {
+        const body = { password: pwInput.value };
+        if (codeInput.value.trim()) {
+          body.code = codeInput.value.trim();
+        }
+
+        const res = await fetch("login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            password: document.getElementById("password").value,
-            code: document.getElementById("code").value.trim(),
-          }),
+          body: JSON.stringify(body),
         });
 
         if (res.ok) {
-          window.location.assign("/");
+          window.location.assign("./");
           return;
         }
 
         const data = await res.json().catch(() => ({}));
+
+        if (data.enroll) {
+          isEnrolling = true;
+          enrollPanel.hidden = false;
+          secretDisplay.textContent = data.secret;
+          codeInput.required = true;
+          codeInput.focus();
+
+          var qr = qrcode(0, "M");
+          qr.addData(data.otpauth_uri);
+          qr.make();
+          qrContainer.innerHTML = qr.createImgTag(6, 4);
+
+          btn.textContent = "Verify and sign in";
+          return;
+        }
+
+        if (isEnrolling) {
+          isEnrolling = false;
+          enrollPanel.hidden = true;
+          codeInput.required = false;
+          codeInput.value = "";
+        }
+
         err.textContent = data.error || "Wrong password or code.";
         err.hidden = false;
       } catch {
@@ -59,7 +100,7 @@
         err.hidden = false;
       } finally {
         btn.disabled = false;
-        btn.textContent = "Sign in";
+        btn.textContent = isEnrolling ? "Verify and sign in" : "Sign in";
       }
     });
   </script>
