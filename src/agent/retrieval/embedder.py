@@ -12,9 +12,13 @@ def _model():
     return TextEmbedding(config.EMBED_MODEL, cache_dir="/app/data/fastembed")
 
 
+def embed_documents_iter(texts):
+    for vec in _model().embed(list(texts), batch_size=64):
+        yield np.asarray(vec, dtype=np.float32)
+
+
 def embed_documents(texts):
-    vecs = list(_model().embed(list(texts), batch_size=64))
-    return np.asarray(vecs, dtype=np.float32)
+    return np.asarray(list(embed_documents_iter(texts)), dtype=np.float32)
 
 
 def embed_query(text):
