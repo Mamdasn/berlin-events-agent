@@ -4,30 +4,19 @@ import numpy as np
 
 from agent.config import config
 
-_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
-
 
 @lru_cache(maxsize=1)
 def _model():
-    from sentence_transformers import SentenceTransformer
+    from fastembed import TextEmbedding
 
-    return SentenceTransformer(config.EMBED_MODEL, device="cpu")
+    return TextEmbedding(config.EMBED_MODEL, cache_dir="/app/data/fastembed")
 
 
 def embed_documents(texts):
-    vecs = _model().encode(
-        list(texts),
-        normalize_embeddings=True,
-        batch_size=64,
-        show_progress_bar=False,
-    )
+    vecs = list(_model().embed(list(texts), batch_size=64))
     return np.asarray(vecs, dtype=np.float32)
 
 
 def embed_query(text):
-    vec = _model().encode(
-        _QUERY_PREFIX + (text or ""),
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
+    vec = next(iter(_model().query_embed([text or ""])))
     return np.asarray(vec, dtype=np.float32)
