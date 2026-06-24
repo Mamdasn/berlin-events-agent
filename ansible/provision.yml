@@ -1,0 +1,59 @@
+---
+- hosts: compose_hosts
+  gather_facts: false
+  tasks:
+    - name: Install berlin-agent-embeddings-backfill systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/berlin-agent-embeddings-backfill.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Build Berlin Events Agent embedding index
+          After=docker.service
+          Requires=docker.service
+
+          [Service]
+          Type=oneshot
+          TimeoutStartSec=0
+          WorkingDirectory=/var/tmp/compose/stack_a
+          ExecStart=/usr/bin/docker compose run --rm --no-deps \
+            berlin-events-agent python -m agent.retrieval.backfill
+      become: true
+      when: stack_name == "stack_a"
+
+    - name: Install berlin-agent-embeddings-backfill systemd timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/berlin-agent-embeddings-backfill.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Run berlin-agent embedding backfill daily at midnight
+
+          [Timer]
+          OnCalendar=*-*-* 00:00:00
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+      become: true
+      when: stack_name == "stack_a"
+
+    - name: Enable and start berlin-agent-embeddings-backfill timer
+      ansible.builtin.systemd:
+        name: berlin-agent-embeddings-backfill.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      become: true
+      when: stack_name == "stack_a"
+
+    - name: Run berlin-agent embedding backfill once
+      ansible.builtin.command:
+        cmd: docker compose run --rm --no-deps \
+          berlin-events-agent python -m agent.retrieval.backfill
+        chdir: /var/tmp/compose/stack_a
+      register: backfill_result
+      retries: 12
+      delay: 10
+      until: backfill_result.rc == 0
+      when: stack_name == "stack_a"
