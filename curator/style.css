@@ -112,6 +112,46 @@ button {
   font-size: 13px;
 }
 
+#enroll-panel {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.enroll-info {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+#qrcode {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 12px;
+}
+
+#qrcode img {
+  display: block;
+  border-radius: 8px;
+}
+
+.enroll-secret-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.enroll-secret {
+  display: block;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-all;
+}
+
 /* app shell */
 .topbar {
   display: flex;

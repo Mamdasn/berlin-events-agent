@@ -63,11 +63,6 @@
           body: JSON.stringify(body),
         });
 
-        if (res.ok) {
-          window.location.assign("./");
-          return;
-        }
-
         const data = await res.json().catch(() => ({}));
 
         if (data.enroll) {
@@ -83,6 +78,11 @@
           qrContainer.innerHTML = qr.createImgTag(6, 4);
 
           btn.textContent = "Verify and sign in";
+          return;
+        }
+
+        if (res.ok) {
+          window.location.assign("./");
           return;
         }
 
