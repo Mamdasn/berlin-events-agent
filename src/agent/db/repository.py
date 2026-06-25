@@ -19,6 +19,15 @@ _DISTANCE_KM = """
     ))
 """
 
+_EDITORS_CHOICE_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS editors_choice (
+        event_id    bigint PRIMARY KEY,
+        note        text,
+        selected_by text,
+        selected_at timestamptz NOT NULL DEFAULT now()
+    )
+"""
+
 
 class EventRepository:
     def __init__(self, database: Database = db, cfg=config):
@@ -42,6 +51,12 @@ class EventRepository:
 
     def _cap(self, limit):
         return min(int(limit or self.config.AGENT_RESULT_LIMIT), self.config.AGENT_RESULT_LIMIT)
+
+    def ensure_schema(self):
+        def run(cur):
+            cur.execute(_EDITORS_CHOICE_SCHEMA)
+
+        return self.db.execute(run)
 
     def search(self, date_from=None, date_to=None, district=None, category=None,
                keyword=None, limit=None):

@@ -1,4 +1,5 @@
 import json
+import logging
 import secrets
 import time
 from pathlib import Path
@@ -24,9 +25,19 @@ SESSION_PREFIX = "ec:session:"
 
 app = FastAPI(title="Editor's Choice curation agent")
 
+log = logging.getLogger(__name__)
+
 _serializer = None
 _redis = None
 _mem_sessions = {}
+
+
+@app.on_event("startup")
+async def _ensure_schema():
+    try:
+        await run_in_threadpool(events.ensure_schema)
+    except Exception:
+        log.exception("Could not ensure editors_choice schema")
 
 
 def _get_serializer():

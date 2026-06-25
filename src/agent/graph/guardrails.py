@@ -30,6 +30,12 @@ def system_prompt():
         "- To feature events, call propose_editors_choice with specific event "
         "ids. This only proposes — the human editor must approve before anything "
         "is saved. Never claim something is featured until approval happens.\n"
+        "- Whenever you list events, show each one's id, for example "
+        "\"1. Title — date, location (id 6713287)\", so the editor can refer back "
+        "to them later.\n"
+        "- When the editor refers to events by their position number or id from a "
+        "list you already showed, act on those ids directly — do not search again "
+        "to re-find events you have already presented.\n"
         "- Keep replies short and plain. Reference events by their title, date, "
         "and location so the editor can recognize them."
     )
