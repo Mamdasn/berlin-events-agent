@@ -88,7 +88,6 @@ button:disabled {
   background: var(--panel-2);
 }
 
-/* primary accent buttons */
 #login-btn,
 #ask-btn,
 .approve-btn {
@@ -106,7 +105,6 @@ button:disabled {
   filter: brightness(1.05);
 }
 
-/* login */
 .login-page {
   display: grid;
   place-items: center;
@@ -219,7 +217,6 @@ button:disabled {
   word-break: break-all;
 }
 
-/* app shell */
 .topbar {
   flex: 0 0 auto;
   display: flex;
@@ -344,7 +341,61 @@ button:disabled {
   letter-spacing: 0.2px;
 }
 
-/* proposal card */
+.msg-agent .bubble {
+  white-space: normal;
+}
+.msg-agent .bubble > :first-child {
+  margin-top: 0;
+}
+.msg-agent .bubble > :last-child {
+  margin-bottom: 0;
+}
+.msg-agent .bubble p {
+  margin: 0 0 10px;
+}
+.msg-agent .bubble h3,
+.msg-agent .bubble h4,
+.msg-agent .bubble h5,
+.msg-agent .bubble h6 {
+  margin: 14px 0 8px;
+  line-height: 1.3;
+}
+.msg-agent .bubble h3 {
+  font-size: 18px;
+}
+.msg-agent .bubble h4 {
+  font-size: 16px;
+}
+.msg-agent .bubble h5,
+.msg-agent .bubble h6 {
+  font-size: 14px;
+  color: var(--muted);
+}
+.msg-agent .bubble ul,
+.msg-agent .bubble ol {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+.msg-agent .bubble li {
+  margin: 3px 0;
+}
+.msg-agent .bubble strong {
+  font-weight: 650;
+}
+.msg-agent .bubble code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+.msg-agent .bubble hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}
+
 .proposal {
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
   border: 1px solid rgba(234, 182, 74, 0.4);
@@ -430,7 +481,6 @@ button:disabled {
   color: var(--muted);
 }
 
-/* composer */
 .composer {
   flex: 0 0 auto;
   display: flex;
@@ -461,7 +511,6 @@ button:disabled {
   padding: 12px 22px;
 }
 
-/* featured panel */
 .featured {
   width: 350px;
   border-left: 1px solid var(--border);
