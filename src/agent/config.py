@@ -30,6 +30,9 @@ class Config:
     DEEPSEEK_RETRY_BACKOFF_SECONDS = float(
         os.environ.get("DEEPSEEK_RETRY_BACKOFF_SECONDS", "1.5")
     )
+    DEEPSEEK_DAILY_MAX_REQUESTS = int(
+        os.environ.get("DEEPSEEK_DAILY_MAX_REQUESTS") or 200
+    )
 
     AGENT_MAX_TOOL_CALLS = int(os.environ.get("AGENT_MAX_TOOL_CALLS", "5"))
     AGENT_RESULT_LIMIT = int(os.environ.get("AGENT_RESULT_LIMIT", "25"))
