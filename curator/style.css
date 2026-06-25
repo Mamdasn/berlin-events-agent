@@ -1,14 +1,22 @@
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --panel-2: #1f232c;
-  --border: #2a2f3a;
-  --text: #e6e8ec;
-  --muted: #9aa3b2;
-  --accent: #e9b949;
+  --bg: #0d0f13;
+  --panel: #161922;
+  --panel-2: #1d212b;
+  --panel-3: #232a38;
+  --border: #2a3140;
+  --text: #e8eaef;
+  --muted: #98a1b2;
+  --faint: #6b7385;
+  --accent: #eab64a;
+  --accent-2: #f3c969;
   --accent-ink: #1a1408;
-  --user: #2b3340;
-  --danger: #e06b6b;
+  --accent-soft: rgba(234, 182, 74, 0.13);
+  --user: #283142;
+  --danger: #e8736f;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.28);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 * {
@@ -22,14 +30,48 @@ body {
 }
 
 body {
-  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1100px 600px at 80% -10%, rgba(234, 182, 74, 0.06), transparent 60%),
+    var(--bg);
   color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--panel-3);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2f3749;
+  background-clip: padding-box;
 }
 
 button {
   font: inherit;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s, opacity 0.15s;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .ghost-btn {
@@ -42,68 +84,87 @@ button {
 
 .ghost-btn:hover {
   color: var(--text);
-  border-color: var(--muted);
+  border-color: var(--faint);
+  background: var(--panel-2);
+}
+
+/* primary accent buttons */
+#login-btn,
+#ask-btn,
+.approve-btn {
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+  color: var(--accent-ink);
+  border: 0;
+  border-radius: 10px;
+  font-weight: 650;
+  box-shadow: var(--shadow-sm);
+}
+
+#login-btn:hover:not(:disabled),
+#ask-btn:hover:not(:disabled),
+.approve-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
 }
 
 /* login */
 .login-page {
   display: grid;
   place-items: center;
+  padding: 24px;
 }
 
 .login-card {
-  width: 320px;
-  background: var(--panel);
+  width: 340px;
+  max-width: 100%;
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px;
+  border-radius: var(--radius-lg);
+  padding: 30px 28px;
+  box-shadow: var(--shadow);
 }
 
 .login-card h1 {
   margin: 0;
   font-size: 22px;
+  letter-spacing: 0.2px;
 }
 
 .login-sub {
   margin: 4px 0 22px;
   color: var(--muted);
+  font-size: 13px;
 }
 
 .login-card label {
   display: block;
   margin: 14px 0 6px;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--faint);
 }
 
 .login-card input {
   width: 100%;
-  padding: 10px 12px;
-  background: var(--panel-2);
+  padding: 11px 13px;
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--text);
 }
 
-.login-card input:focus {
+.login-card input:focus,
+#ask-input:focus,
+.note-input:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 #login-btn {
   width: 100%;
-  margin-top: 20px;
-  padding: 11px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: 0;
-  border-radius: 8px;
-  font-weight: 600;
-}
-
-#login-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
+  margin-top: 22px;
+  padding: 12px;
 }
 
 .login-error {
@@ -113,12 +174,14 @@ button {
 }
 
 #enroll-panel {
-  margin-top: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
   text-align: center;
 }
 
 .enroll-info {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
   font-size: 13px;
   color: var(--muted);
 }
@@ -126,51 +189,70 @@ button {
 #qrcode {
   display: flex;
   justify-content: center;
-  margin: 0 0 12px;
+  margin: 0 0 14px;
 }
 
 #qrcode img {
   display: block;
-  border-radius: 8px;
+  border-radius: 10px;
+  padding: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
 }
 
 .enroll-secret-label {
   margin: 0 0 6px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--faint);
 }
 
 .enroll-secret {
   display: block;
-  padding: 8px 10px;
-  background: var(--panel-2);
+  padding: 9px 11px;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  font-family: monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 13px;
-  color: var(--text);
+  letter-spacing: 1px;
+  color: var(--accent-2);
   word-break: break-all;
 }
 
 /* app shell */
 .topbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 18px;
+  padding: 13px 20px;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  background: rgba(22, 25, 34, 0.85);
+  backdrop-filter: blur(8px);
 }
 
 .brand {
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+
+.brand::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  margin-right: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
 }
 
 .brand-tag {
   color: var(--muted);
   font-weight: 400;
   font-size: 13px;
-  margin-left: 6px;
+  margin-left: 8px;
 }
 
 .topbar-actions {
@@ -179,8 +261,9 @@ button {
 }
 
 .layout {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  height: calc(100% - 53px);
 }
 
 .chat {
@@ -192,18 +275,32 @@ button {
 
 .messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 22px;
+  padding: 26px 22px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
+  scroll-behavior: smooth;
+}
+
+.msg,
+.proposal {
+  max-width: 780px;
+  width: 100%;
+  margin: 0 auto;
+  animation: rise 0.18s ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 .msg {
   display: flex;
-  max-width: 760px;
-  width: 100%;
-  margin: 0 auto;
 }
 
 .msg-user {
@@ -211,14 +308,17 @@ button {
 }
 
 .bubble {
-  padding: 11px 14px;
-  border-radius: 12px;
+  padding: 12px 15px;
+  border-radius: 14px;
   white-space: pre-wrap;
   word-wrap: break-word;
+  box-shadow: var(--shadow-sm);
 }
 
 .msg-user .bubble {
   background: var(--user);
+  border-bottom-right-radius: 5px;
+  max-width: 80%;
 }
 
 .msg-agent {
@@ -228,34 +328,42 @@ button {
 .msg-agent .bubble {
   background: var(--panel);
   border: 1px solid var(--border);
+  border-bottom-left-radius: 5px;
 }
 
 .bubble-error {
   border-color: var(--danger) !important;
   color: var(--danger);
+  background: rgba(232, 115, 111, 0.08) !important;
 }
 
 .tools {
-  margin-top: 6px;
+  margin-top: 7px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--faint);
+  letter-spacing: 0.2px;
 }
 
 /* proposal card */
 .proposal {
-  max-width: 760px;
-  width: 100%;
-  margin: 0 auto;
-  background: var(--panel-2);
-  border: 1px solid var(--accent);
-  border-radius: 12px;
-  padding: 16px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid rgba(234, 182, 74, 0.4);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow-sm), 0 0 0 3px var(--accent-soft);
 }
 
 .proposal-head {
-  font-weight: 600;
-  color: var(--accent);
-  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  font-weight: 650;
+  color: var(--accent-2);
+  margin-bottom: 12px;
+}
+
+.proposal-head::before {
+  content: "★";
+  margin-right: 8px;
 }
 
 .proposal-events {
@@ -265,10 +373,10 @@ button {
 }
 
 .event-row {
-  background: var(--panel);
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 9px;
+  padding: 10px 13px;
 }
 
 .event-title {
@@ -278,21 +386,23 @@ button {
 .event-meta {
   font-size: 13px;
   color: var(--muted);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .proposal-note {
   display: block;
-  margin: 12px 0 4px;
-  font-size: 13px;
-  color: var(--muted);
+  margin: 14px 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--faint);
 }
 
 .note-input {
   width: 100%;
   margin-top: 6px;
-  padding: 8px 10px;
-  background: var(--panel);
+  padding: 9px 11px;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
@@ -301,39 +411,32 @@ button {
 .proposal-actions {
   display: flex;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 16px;
 }
 
 .approve-btn {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: 0;
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-weight: 600;
+  padding: 9px 18px;
 }
 
 .proposal.settled {
-  opacity: 0.7;
+  opacity: 0.65;
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
 }
 
 .proposal-result {
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 13px;
   color: var(--muted);
 }
 
-button:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
 /* composer */
 .composer {
+  flex: 0 0 auto;
   display: flex;
   gap: 10px;
   align-items: flex-end;
-  padding: 14px 22px;
+  padding: 16px 22px 18px;
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
@@ -341,32 +444,26 @@ button:disabled {
 #ask-input {
   flex: 1;
   resize: none;
-  padding: 11px 14px;
-  background: var(--panel-2);
+  padding: 12px 15px;
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   color: var(--text);
   font: inherit;
-  max-height: 160px;
+  max-height: 170px;
 }
 
-#ask-input:focus {
-  outline: none;
-  border-color: var(--accent);
+#ask-input::placeholder {
+  color: var(--faint);
 }
 
 #ask-btn {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: 0;
-  border-radius: 10px;
-  padding: 11px 20px;
-  font-weight: 600;
+  padding: 12px 22px;
 }
 
 /* featured panel */
 .featured {
-  width: 340px;
+  width: 350px;
   border-left: 1px solid var(--border);
   background: var(--panel);
   display: flex;
@@ -377,19 +474,21 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: 15px 16px;
   border-bottom: 1px solid var(--border);
 }
 
 .featured-head h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
+  letter-spacing: 0.2px;
 }
 
 .featured-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -403,15 +502,25 @@ button:disabled {
   gap: 10px;
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 11px 13px;
   color: var(--text);
 }
 
+.featured-row:hover {
+  border-color: var(--faint);
+}
+
 @media (max-width: 720px) {
+  .messages,
+  .composer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
   .featured {
     position: fixed;
-    inset: 53px 0 0 auto;
+    inset: 0;
     width: 100%;
+    z-index: 20;
   }
 }
