@@ -19,6 +19,64 @@ function scrollDown() {
   messages.scrollTop = messages.scrollHeight;
 }
 
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+function mdInline(s) {
+  return s
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*\s][^*]*?)\*/g, "<em>$1</em>")
+    .replace(/(^|[\s(])_([^_\s][^_]*?)_(?=[\s).,!?]|$)/g, "$1<em>$2</em>");
+}
+
+function renderMarkdown(text) {
+  const lines = escapeHtml(text || "").split("\n");
+  let html = "";
+  let list = null;
+  const closeList = () => {
+    if (list) {
+      html += "</" + list + ">";
+      list = null;
+    }
+  };
+  for (const line of lines) {
+    let m;
+    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
+      closeList();
+      html += "<h" + Math.min(m[1].length + 2, 6) + ">" + mdInline(m[2]) +
+        "</h" + Math.min(m[1].length + 2, 6) + ">";
+    } else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) {
+      if (list !== "ul") {
+        closeList();
+        html += "<ul>";
+        list = "ul";
+      }
+      html += "<li>" + mdInline(m[1]) + "</li>";
+    } else if ((m = line.match(/^\s*\d+\.\s+(.*)$/))) {
+      if (list !== "ol") {
+        closeList();
+        html += "<ol>";
+        list = "ol";
+      }
+      html += "<li>" + mdInline(m[1]) + "</li>";
+    } else if (/^\s*---+\s*$/.test(line)) {
+      closeList();
+      html += "<hr>";
+    } else if (line.trim() === "") {
+      closeList();
+    } else {
+      closeList();
+      html += "<p>" + mdInline(line) + "</p>";
+    }
+  }
+  closeList();
+  return html;
+}
+
 function addUserMessage(text) {
   const node = tmpl("msg-user");
   node.querySelector(".bubble").textContent = text;
@@ -120,7 +178,8 @@ function handleEvent(chunk, view) {
   }
 
   if (name === "token") {
-    view.bubble.textContent += payload.text || "";
+    view.raw = (view.raw || "") + (payload.text || "");
+    view.bubble.innerHTML = renderMarkdown(view.raw);
     scrollDown();
   } else if (name === "status") {
     setTools(view, payload.tools_used);

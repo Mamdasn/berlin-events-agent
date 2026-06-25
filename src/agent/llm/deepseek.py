@@ -34,7 +34,7 @@ def _enforce_daily_cap():
         )
 
 
-def chat(messages, tools=None, tool_choice="auto", temperature=0.2, max_tokens=1200):
+def chat(messages, tools=None, tool_choice="auto", temperature=0.2, max_tokens=2000):
     if not config.DEEPSEEK_API_KEY:
         raise DeepSeekError("DEEPSEEK_API_KEY is not set")
 

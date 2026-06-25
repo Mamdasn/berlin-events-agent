@@ -1,3 +1,5 @@
+import json
+import re
 import secrets
 
 from starlette.concurrency import run_in_threadpool
@@ -9,6 +11,50 @@ from agent.graph.state import AgentState
 from agent.tools.commit_editors_choice import commit_editors_choice
 
 _CHUNK = 80
+
+_DSML_RE = re.compile(r"<[｜|]+\s*DSML.*", re.DOTALL)
+
+_BUDGET_DONE = (
+    "You have used all available tool calls. Write your final answer for the editor "
+    "now, in plain text, using only what you already found. Do not call tools."
+)
+
+
+def _clean(text):
+    return _DSML_RE.sub("", text or "").strip()
+
+
+_DSML_INVOKE = re.compile(
+    r"DSML[｜|]+\s*invoke\s+name=\"([^\"]+)\"\s*>(.*?)(?:</[｜|]+\s*DSML[｜|]+\s*invoke>|\Z)",
+    re.DOTALL,
+)
+_DSML_PARAM = re.compile(
+    r"DSML[｜|]+\s*parameter\s+name=\"([^\"]+)\"(?:\s+string=\"([^\"]*)\")?\s*>"
+    r"(.*?)(?:</[｜|]+\s*DSML[｜|]+\s*parameter>|\Z)",
+    re.DOTALL,
+)
+
+
+def _recover_dsml_tool_calls(content):
+    calls = []
+    for name, body in _DSML_INVOKE.findall(content or ""):
+        args = {}
+        for pname, is_string, pval in _DSML_PARAM.findall(body):
+            pval = pval.strip()
+            if is_string == "false":
+                try:
+                    pval = json.loads(pval)
+                except ValueError:
+                    pass
+            args[pname] = pval
+        calls.append(
+            {
+                "id": "dsml_" + secrets.token_hex(4),
+                "type": "function",
+                "function": {"name": name, "arguments": json.dumps(args)},
+            }
+        )
+    return calls
 
 
 def _chunks(text):
@@ -28,11 +74,23 @@ def _history_view(messages):
 
 
 async def _drive(state: AgentState):
+    nudged = False
     while True:
+        if not state.budget_left and not nudged:
+            state.messages.append({"role": "system", "content": _BUDGET_DONE})
+            nudged = True
+
         assistant = await run_in_threadpool(
             nodes.reason, state.messages, state.budget_left
         )
         tool_calls = assistant.get("tool_calls") or []
+        if not tool_calls and state.budget_left:
+            recovered = _recover_dsml_tool_calls(assistant.get("content"))
+            if recovered:
+                assistant["tool_calls"] = recovered
+                tool_calls = recovered
+        if not tool_calls:
+            assistant["content"] = _clean(assistant.get("content"))
         state.messages.append(assistant)
 
         if not tool_calls:

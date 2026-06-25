@@ -34,7 +34,7 @@ class Config:
         os.environ.get("DEEPSEEK_DAILY_MAX_REQUESTS") or 200
     )
 
-    AGENT_MAX_TOOL_CALLS = int(os.environ.get("AGENT_MAX_TOOL_CALLS", "5"))
+    AGENT_MAX_TOOL_CALLS = int(os.environ.get("AGENT_MAX_TOOL_CALLS") or 10)
     AGENT_RESULT_LIMIT = int(os.environ.get("AGENT_RESULT_LIMIT", "25"))
     AGENT_FIELD_MAX_CHARS = int(os.environ.get("AGENT_FIELD_MAX_CHARS", "600"))
     AGENT_MESSAGE_MAX_CHARS = int(os.environ.get("AGENT_MESSAGE_MAX_CHARS", "2000"))
