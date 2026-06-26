@@ -371,6 +371,11 @@ button:disabled {
   text-align: left;
 }
 
+.bubble.is-placeholder {
+  color: var(--faint);
+  font-style: italic;
+}
+
 .bubble-error {
   border-color: rgba(255, 180, 171, 0.45) !important;
   color: var(--danger);

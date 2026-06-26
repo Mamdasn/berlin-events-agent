@@ -100,10 +100,13 @@ function addUserMessage(text) {
 
 function addAgentMessage() {
   const node = tmpl("msg-agent");
+  const bubble = node.querySelector(".bubble");
+  bubble.textContent = "Analyzing event context...";
+  bubble.classList.add("is-placeholder");
   messages.appendChild(node);
   scrollDown();
   return {
-    bubble: node.querySelector(".bubble"),
+    bubble,
     events: node.querySelector(".surface-events"),
     tools: node.querySelector(".tools"),
     root: node,
@@ -129,7 +132,9 @@ function normalizeEvent(ev) {
 }
 
 function eventMeta(ev) {
-  return [ev.date, ev.time, ev.location].filter(Boolean).join(" · ");
+  return [ev.date, ev.time, ev.location, "id " + ev.event_id]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function updateSurfaceCardState(card, ev) {
@@ -259,6 +264,7 @@ function handleEvent(chunk, view) {
   }
 
   if (name === "token") {
+    view.bubble.classList.remove("is-placeholder");
     view.raw = (view.raw || "") + (payload.text || "");
     view.bubble.innerHTML = renderMarkdown(view.raw);
     scrollDown();
@@ -271,6 +277,7 @@ function handleEvent(chunk, view) {
   } else if (name === "done") {
     if (payload.thread_id) threadId = payload.thread_id;
   } else if (name === "error") {
+    view.bubble.classList.remove("is-placeholder");
     view.bubble.classList.add("bubble-error");
     view.bubble.textContent = payload.message || "Something went wrong.";
   }

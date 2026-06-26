@@ -99,5 +99,36 @@ def test_direct_propose_surfaces_event_for_action(repo, monkeypatch):
     assert dict(out)["events"]["events"][0]["title"] == "Odd ritual"
 
 
+def test_empty_final_answer_gets_contextual_fallback(repo, monkeypatch):
+    llm = ScriptedLLM([
+        _assistant_tool("query_events", '{"keyword": "ritual"}'),
+        _assistant_text(""),
+    ])
+    monkeypatch.setattr(nodes.deepseek, "chat", llm)
+
+    out = _drain(build.stream_answer("t3", "find ritual events", budget=5))
+    text = "".join(d["text"] for n, d in out if n == "token")
+    assert "I found 1 matching event card" in text
+    assert "Odd ritual" in text
+    assert "id 1" in text
+    assert "fits because" in text
+
+
+def test_empty_final_answer_uses_proposal_reason(repo, monkeypatch):
+    llm = ScriptedLLM([
+        _assistant_tool(
+            "propose_editors_choice",
+            '{"picks": [{"event_id": 1, "reason": "strong local relevance"}]}',
+        ),
+        _assistant_text(""),
+    ])
+    monkeypatch.setattr(nodes.deepseek, "chat", llm)
+
+    out = _drain(build.stream_answer("t4", "recommend event 1", budget=5))
+    text = "".join(d["text"] for n, d in out if n == "token")
+    assert "Odd ritual" in text
+    assert "strong local relevance" in text
+
+
 def test_resume_flow_removed():
     assert not hasattr(build, "stream_resume")
