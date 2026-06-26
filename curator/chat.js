@@ -8,11 +8,22 @@ const featuredPanel = document.getElementById("featured-panel");
 const featuredClose = document.getElementById("featured-close");
 const featuredApply = document.getElementById("featured-apply");
 const featuredList = document.getElementById("featured-list");
+const featuredReset = document.getElementById("featured-reset");
+const featuredCount = document.getElementById("featured-count");
+const mobileFeaturedCount = document.getElementById("mobile-featured-count");
+const featuredStatus = document.getElementById("featured-status");
+const sidebarOverlay = document.getElementById("sidebar-overlay");
+const successSnackbar = document.getElementById("success-snackbar");
 
 let threadId = null;
 let streaming = false;
+let snackbarTimer = null;
 const surfacedEvents = new Map();
 const surfacedCards = new Map();
+
+const ICON_ADD = '<span class="material-symbols-outlined">add</span>';
+const ICON_CHECK = '<span class="material-symbols-outlined">check</span>';
+const ICON_REMOVE = '<span class="material-symbols-outlined">remove</span>';
 
 function tmpl(id) {
   return document.getElementById(id).content.firstElementChild.cloneNode(true);
@@ -102,7 +113,7 @@ function addAgentMessage() {
 function setTools(view, names) {
   if (!names || !names.length) return;
   view.tools.hidden = false;
-  view.tools.textContent = "Tools: " + names.join(", ");
+  view.tools.textContent = "ReAct tools: " + names.join(", ");
 }
 
 function normalizeEvent(ev) {
@@ -125,7 +136,7 @@ function updateSurfaceCardState(card, ev) {
   const add = card.querySelector(".event-add");
   const isStaged = stagedHas(ev.event_id);
   add.disabled = isStaged;
-  add.textContent = isStaged ? "✓" : "+";
+  add.innerHTML = isStaged ? ICON_CHECK : ICON_ADD;
   add.title = isStaged ? "Already in Editor's Choice" : "Add to Editor's Choice";
   card.classList.toggle("is-staged", isStaged);
 }
@@ -329,6 +340,16 @@ let featuredDirty = false;
 function setDirty(v) {
   featuredDirty = v;
   featuredApply.disabled = !v;
+  if (featuredStatus) featuredStatus.textContent = v ? "Pending apply" : "Synced";
+}
+
+function updateFeaturedCount() {
+  const count = String(desired.size);
+  if (featuredCount) featuredCount.textContent = count;
+  if (mobileFeaturedCount) {
+    mobileFeaturedCount.textContent = count;
+    mobileFeaturedCount.hidden = desired.size === 0;
+  }
 }
 
 function stagedHas(eventId) {
@@ -393,8 +414,12 @@ function stageRemove(eventId) {
 
 function renderFeatured() {
   featuredList.textContent = "";
+  updateFeaturedCount();
   if (!desired.size) {
-    featuredList.textContent = "No featured events yet.";
+    const empty = document.createElement("div");
+    empty.className = "featured-empty";
+    empty.innerHTML = "<strong>Curated space is empty</strong><span>Use the plus bubble in the AI feed to pin candidate events here.</span>";
+    featuredList.appendChild(empty);
     return;
   }
   desired.forEach((item) => {
@@ -416,7 +441,7 @@ function renderFeatured() {
     const remove = document.createElement("button");
     remove.className = "bubble-btn";
     remove.type = "button";
-    remove.textContent = "−";
+    remove.innerHTML = ICON_REMOVE;
     remove.title = "Remove from Editor's Choice";
     remove.addEventListener("click", () => stageRemove(item.event_id));
 
@@ -429,6 +454,7 @@ function renderFeatured() {
 async function applyFeatured() {
   if (!featuredDirty) return;
   featuredApply.disabled = true;
+  const appliedCount = desired.size;
   const items = [...desired.values()].map((it) => ({
     event_id: it.event_id,
     note: it.note || null,
@@ -443,7 +469,13 @@ async function applyFeatured() {
       window.location.assign("login.html");
       return;
     }
-    if (res.ok) await loadFeatured();
+    if (res.ok) {
+      await loadFeatured();
+      showSnackbar(
+        "Changes applied",
+        appliedCount + " curated event" + (appliedCount === 1 ? " was" : "s were") + " saved."
+      );
+    }
     else setDirty(true);
   } catch {
     setDirty(true);
@@ -452,20 +484,66 @@ async function applyFeatured() {
 
 function showFeatured() {
   featuredPanel.hidden = false;
+  if (sidebarOverlay && !window.matchMedia("(min-width: 901px)").matches) {
+    sidebarOverlay.hidden = false;
+  }
   renderFeatured();
+}
+
+function hideFeatured() {
+  featuredPanel.hidden = true;
+  if (sidebarOverlay) sidebarOverlay.hidden = true;
+}
+
+function showSnackbar(title, message) {
+  if (!successSnackbar) return;
+  successSnackbar.querySelector("h3").textContent = title;
+  successSnackbar.querySelector("p").textContent = message;
+  successSnackbar.hidden = false;
+  requestAnimationFrame(() => successSnackbar.classList.add("is-open"));
+  clearTimeout(snackbarTimer);
+  snackbarTimer = setTimeout(() => {
+    successSnackbar.classList.remove("is-open");
+    setTimeout(() => {
+      if (!successSnackbar.classList.contains("is-open")) successSnackbar.hidden = true;
+    }, 260);
+  }, 3200);
+}
+
+function resetFeatured() {
+  if (!desired.size) return;
+  desired.clear();
+  setDirty(true);
+  renderFeatured();
+  document.dispatchEvent(new CustomEvent("featured-changed"));
 }
 
 featuredToggle.addEventListener("click", () => {
   if (featuredPanel.hidden) showFeatured();
-  else featuredPanel.hidden = true;
+  else hideFeatured();
 });
 featuredClose.addEventListener("click", () => {
-  featuredPanel.hidden = true;
+  hideFeatured();
 });
 featuredApply.addEventListener("click", applyFeatured);
+featuredReset.addEventListener("click", resetFeatured);
+sidebarOverlay.addEventListener("click", hideFeatured);
 document.addEventListener("featured-changed", updateSurfaceCards);
 
-loadFeatured();
+document.querySelectorAll("[data-prompt]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const text = button.dataset.prompt || "";
+    if (!text || streaming) return;
+    addUserMessage(text);
+    input.value = "";
+    input.style.height = "auto";
+    ask(text);
+  });
+});
+
+loadFeatured().then(() => {
+  if (window.matchMedia("(min-width: 901px)").matches) showFeatured();
+});
 
 logoutBtn.addEventListener("click", async () => {
   await fetch("logout", { method: "POST" }).catch(() => {});

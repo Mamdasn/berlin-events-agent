@@ -1,7 +1,7 @@
 services:
   berlin-events-agent:
     build: .
-    image: sfarhad/berlin-events-agent:0.0.7
+    image: sfarhad/berlin-events-agent:0.1.0
     container_name: berlin-events-agent
     restart: unless-stopped
     environment:

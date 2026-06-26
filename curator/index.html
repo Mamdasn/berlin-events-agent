@@ -4,61 +4,141 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Editor's Choice — Curation</title>
+  <title>AI Curator Workspace</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">Editor's Choice <span class="brand-tag">curation agent</span></div>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <span class="material-symbols-outlined">auto_awesome</span>
+      </div>
+      <div>
+        <div class="brand-title">
+          <span>AI Curator Workspace</span>
+          <span class="version-chip">v2.5-ReAct</span>
+        </div>
+        <div class="brand-sub">Editorial curator tool · Berlin events database</div>
+      </div>
+    </div>
+
     <div class="topbar-actions">
-      <button id="featured-toggle" class="ghost-btn">Featured</button>
-      <button id="logout-btn" class="ghost-btn">Sign out</button>
+      <div class="model-status" aria-label="Agent status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>ReAct model active</span>
+      </div>
+      <button id="featured-toggle" class="ghost-btn sidebar-toggle" type="button">
+        <span class="material-symbols-outlined">star</span>
+        <span>Editor's Choice</span>
+        <span id="mobile-featured-count" class="count-badge">0</span>
+      </button>
+      <button id="logout-btn" class="ghost-btn" type="button">Sign out</button>
     </div>
   </header>
 
   <main class="layout">
-    <section class="chat">
+    <section class="chat" aria-label="AI curator chat">
       <div id="messages" class="messages" aria-live="polite"></div>
 
-      <form id="ask-form" class="composer">
-        <textarea id="ask-input" rows="1"
-                  placeholder="Ask the agent — e.g. the most unusual cultural event this weekend"></textarea>
-        <button type="submit" id="ask-btn">Send</button>
-      </form>
+      <div class="quick-prompts" aria-label="Quick prompts">
+        <button type="button" data-prompt="Show me high-quality art exhibitions opening this weekend.">🎨 Art exhibitions</button>
+        <button type="button" data-prompt="Any interesting public talks or community workshops near Kreuzberg?">🗣️ Talks and workshops</button>
+        <button type="button" data-prompt="What small concerts or music events are recommended?">🎵 Small concerts</button>
+        <button type="button" data-prompt="List outdoor neighborhood markets or culinary pop-ups.">🍔 Food markets</button>
+      </div>
+
+      <div class="composer-wrap">
+        <form id="ask-form" class="composer">
+          <span class="composer-icon" aria-hidden="true">
+            <span class="material-symbols-outlined">smart_toy</span>
+          </span>
+          <textarea id="ask-input" rows="1"
+                    placeholder="Ask AI to query events, filter by neighborhood, category..."></textarea>
+          <button type="submit" id="ask-btn" aria-label="Send">
+            <span class="material-symbols-outlined">send</span>
+          </button>
+        </form>
+      </div>
     </section>
 
     <aside id="featured-panel" class="featured" hidden>
       <div class="featured-head">
-        <h2>Featured events</h2>
+        <div class="featured-title">
+          <span class="star material-symbols-outlined" aria-hidden="true">star</span>
+          <h2>Editor's Choice</h2>
+          <span id="featured-count" class="count-badge">0</span>
+        </div>
         <div class="featured-actions">
-          <button id="featured-apply" class="apply-btn" disabled>Apply</button>
-          <button id="featured-close" class="ghost-btn">Close</button>
+          <button id="featured-reset" class="text-btn" type="button">Reset</button>
+          <button id="featured-close" class="icon-btn" type="button" aria-label="Close">
+            <span class="material-symbols-outlined">close</span>
+          </button>
         </div>
       </div>
+
       <div id="featured-list" class="featured-list"></div>
+
+      <div class="commit-box">
+        <div class="commit-status">
+          <span>Target status</span>
+          <strong id="featured-status">Synced</strong>
+        </div>
+        <button id="featured-apply" class="apply-btn" type="button" disabled>
+          <span class="material-symbols-outlined">done_all</span>
+          <span>Apply changes</span>
+        </button>
+      </div>
     </aside>
+    <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
   </main>
 
+  <div id="success-snackbar" class="snackbar" hidden>
+    <div class="snackbar-icon" aria-hidden="true">
+      <span class="material-symbols-outlined">check_circle</span>
+    </div>
+    <div>
+      <h3>Changes applied</h3>
+      <p>Editor's Choice was saved.</p>
+    </div>
+  </div>
+
   <template id="msg-user">
-    <div class="msg msg-user"><div class="bubble"></div></div>
+    <div class="msg msg-user">
+      <div class="avatar" aria-hidden="true">
+        <span class="material-symbols-outlined">edit_note</span>
+      </div>
+      <div class="message-body">
+        <div class="speaker">Editor request</div>
+        <div class="bubble"></div>
+      </div>
+    </div>
   </template>
 
   <template id="msg-agent">
     <div class="msg msg-agent">
-      <div class="bubble"></div>
-      <div class="surface-events" hidden></div>
-      <div class="tools" hidden></div>
+      <div class="avatar" aria-hidden="true">
+        <span class="material-symbols-outlined">smart_toy</span>
+      </div>
+      <div class="message-body">
+        <div class="speaker">AI ReAct agent</div>
+        <div class="bubble"></div>
+        <div class="surface-events" hidden></div>
+        <div class="tools" hidden></div>
+      </div>
     </div>
   </template>
 
   <template id="event-card">
     <div class="surface-event">
       <div class="surface-event-body">
+        <div class="event-kicker">Candidate event</div>
         <div class="event-title"></div>
         <div class="event-meta"></div>
         <div class="event-reason" hidden></div>
       </div>
-      <button class="bubble-btn event-add" type="button" title="Add to Editor's Choice">+</button>
+      <button class="bubble-btn event-add" type="button" title="Add to Editor's Choice">
+        <span class="material-symbols-outlined">add</span>
+      </button>
     </div>
   </template>
 

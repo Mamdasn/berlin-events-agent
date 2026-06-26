@@ -195,6 +195,15 @@ async def qrcode_js():
     return FileResponse(CURATOR_DIR / "qrcode.min.js")
 
 
+@app.get("/material-symbols.woff2")
+async def material_symbols_font():
+    return FileResponse(
+        CURATOR_DIR / "material-symbols.woff2",
+        media_type="font/woff2",
+        headers={"Cache-Control": "public, max-age=604800"},
+    )
+
+
 @app.post("/login")
 async def login(request: Request):
     try:
