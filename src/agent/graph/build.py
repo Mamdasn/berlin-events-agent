@@ -21,10 +21,14 @@ _TOOL_RESPONSE_NUDGE = (
     "You have just used event tools and may have surfaced event cards in the UI. "
     "Continue the conversation in natural language. If you want to recommend "
     "Editor's Choice candidates, call propose_editors_choice with reasons first. "
-    "When you are ready to answer, mention each relevant event by wrapping its title "
-    "in a [[id|Title]] marker and give a short reason for each. Do not end the turn "
-    "with only cards or tool output."
+    "When you are ready to answer, mention each relevant event with {{event:id}} "
+    "using the event's actual id, and give a short reason for each. Do not end "
+    "the turn with only cards or tool output."
 )
+
+_EVENT_HANDLE_RE = re.compile(r"\{\{\s*event\s*:\s*(\d+)\s*\}\}")
+_EVENT_MARKER_RE = re.compile(r"\[\[(\d+)\|([^\]]*)\]\]")
+_PROTECTED_RE = re.compile(r"(\[\[\d+\|[^\]]*\]\]|`[^`]*`|https?://\S+)")
 
 
 def _clean(text):
@@ -110,6 +114,97 @@ def _new_events(events, seen_event_ids, surfaced_events):
     return surfaced
 
 
+def _marker_title(title, event_id):
+    clean = re.sub(r"[\|\[\]\r\n]+", " ", title or "").strip()
+    clean = re.sub(r"\s+", " ", clean)
+    return clean or f"Event {event_id}"
+
+
+def _marker(event):
+    event_id = int(event["event_id"])
+    return f"[[{event_id}|{_marker_title(event.get('title'), event_id)}]]"
+
+
+def _protect_segments(text):
+    parts = []
+    pos = 0
+    for match in _PROTECTED_RE.finditer(text):
+        if match.start() > pos:
+            parts.append((False, text[pos : match.start()]))
+        parts.append((True, match.group(0)))
+        pos = match.end()
+    if pos < len(text):
+        parts.append((False, text[pos:]))
+    return parts
+
+
+def _replace_event_handles(text, surfaced_events):
+    def replace(match):
+        event_id = int(match.group(1))
+        event = surfaced_events.get(event_id)
+        return _marker(event) if event else f"event {event_id}"
+
+    return _EVENT_HANDLE_RE.sub(replace, text)
+
+
+def _normalize_markers(text, surfaced_events):
+    def replace(match):
+        event_id = int(match.group(1))
+        event = surfaced_events.get(event_id)
+        return _marker(event) if event else f"event {event_id}"
+
+    return _EVENT_MARKER_RE.sub(replace, text)
+
+
+def _replace_known_ids(text, surfaced_events):
+    for event_id in sorted(surfaced_events):
+        pattern = re.compile(
+            rf"(?<!\w)(?:event\s+)?id\s*#?\s*{event_id}(?!\w)",
+            re.IGNORECASE,
+        )
+        text = pattern.sub(_marker(surfaced_events[event_id]), text)
+    return text
+
+
+def _replace_known_titles(text, surfaced_events):
+    by_title = {}
+    for event in surfaced_events.values():
+        title = _marker_title(event.get("title"), event["event_id"])
+        by_title.setdefault(title, []).append(event)
+
+    for title in sorted(by_title, key=len, reverse=True):
+        events = by_title[title]
+        if len(events) != 1:
+            continue
+        pattern = re.compile(rf"(?<!\w){re.escape(title)}(?!\w)")
+        text = pattern.sub(_marker(events[0]), text)
+    return text
+
+
+def _finalize_event_mentions(text, surfaced_events):
+    if not text:
+        return text
+
+    surfaced_events = surfaced_events or {}
+    text = _normalize_markers(
+        _replace_event_handles(text, surfaced_events), surfaced_events
+    )
+    finalized = []
+    for protected, segment in _protect_segments(text):
+        if protected:
+            finalized.append(segment)
+            continue
+        segment = _replace_known_titles(segment, surfaced_events)
+        id_finalized = []
+        for id_protected, id_segment in _protect_segments(segment):
+            if id_protected:
+                id_finalized.append(id_segment)
+            else:
+                id_finalized.append(_replace_known_ids(id_segment, surfaced_events))
+        finalized.append("".join(id_finalized))
+    return "".join(finalized)
+
+
 def _fallback_reason(event):
     category = event.get("category")
     location = event.get("location")
@@ -140,7 +235,6 @@ def _fallback_answer(surfaced_events, proposed_reasons):
     lines = [header]
     for index, event in enumerate(events[:5], start=1):
         event_id = int(event["event_id"])
-        title = event.get("title") or "Untitled"
         meta = ", ".join(
             str(part)
             for part in (event.get("date"), event.get("time"), event.get("location"))
@@ -148,7 +242,7 @@ def _fallback_answer(surfaced_events, proposed_reasons):
         )
         reason = proposed_reasons.get(event_id) or _fallback_reason(event)
         suffix = f" — {meta}" if meta else ""
-        lines.append(f"{index}. [[{event_id}|{title}]]{suffix}. {reason}")
+        lines.append(f"{index}. {{{{event:{event_id}}}}}{suffix}. {reason}")
     if count > 5:
         lines.append(f"There are {count - 5} more matching cards in the workspace.")
     return "\n".join(lines)
@@ -181,7 +275,8 @@ async def _drive(state: AgentState):
             content = assistant.get("content") or ""
             if not content:
                 content = _fallback_answer(surfaced_events, proposed_reasons)
-                assistant["content"] = content
+            content = _finalize_event_mentions(content, surfaced_events)
+            assistant["content"] = content
             for chunk in _chunks(content):
                 yield "token", {"text": chunk}
             memory.save_history(state.thread_id, _history_view(state.messages))
