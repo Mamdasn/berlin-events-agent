@@ -6,10 +6,13 @@ const logoutBtn = document.getElementById("logout-btn");
 const featuredToggle = document.getElementById("featured-toggle");
 const featuredPanel = document.getElementById("featured-panel");
 const featuredClose = document.getElementById("featured-close");
+const featuredApply = document.getElementById("featured-apply");
 const featuredList = document.getElementById("featured-list");
 
 let threadId = null;
 let streaming = false;
+const surfacedEvents = new Map();
+const surfacedCards = new Map();
 
 function tmpl(id) {
   return document.getElementById(id).content.firstElementChild.cloneNode(true);
@@ -90,6 +93,7 @@ function addAgentMessage() {
   scrollDown();
   return {
     bubble: node.querySelector(".bubble"),
+    events: node.querySelector(".surface-events"),
     tools: node.querySelector(".tools"),
     root: node,
   };
@@ -101,45 +105,111 @@ function setTools(view, names) {
   view.tools.textContent = "Tools: " + names.join(", ");
 }
 
-function renderEventRow(ev) {
-  const row = tmpl("event-row");
-  row.querySelector(".event-title").textContent = ev.title || "Untitled";
-  const meta = [ev.date, ev.time, ev.location].filter(Boolean).join(" · ");
-  row.querySelector(".event-meta").textContent = meta;
-  return row;
+function normalizeEvent(ev) {
+  const rawId = ev && (ev.event_id ?? ev.id);
+  const eventId = Number(rawId);
+  if (!Number.isFinite(eventId)) return null;
+  return {
+    ...ev,
+    id: eventId,
+    event_id: eventId,
+    reason: ev.reason || null,
+  };
 }
 
-function addProposal(proposalId, events) {
-  const card = tmpl("proposal-card");
-  const list = card.querySelector(".proposal-events");
-  events.forEach((ev) => list.appendChild(renderEventRow(ev)));
+function eventMeta(ev) {
+  return [ev.date, ev.time, ev.location].filter(Boolean).join(" · ");
+}
 
-  const note = card.querySelector(".note-input");
-  const approve = card.querySelector(".approve-btn");
-  const reject = card.querySelector(".reject-btn");
+function updateSurfaceCardState(card, ev) {
+  const add = card.querySelector(".event-add");
+  const isStaged = stagedHas(ev.event_id);
+  add.disabled = isStaged;
+  add.textContent = isStaged ? "✓" : "+";
+  add.title = isStaged ? "Already in Editor's Choice" : "Add to Editor's Choice";
+  card.classList.toggle("is-staged", isStaged);
+}
 
-  function settle(label) {
-    approve.disabled = true;
-    reject.disabled = true;
-    note.disabled = true;
-    card.classList.add("settled");
-    const tag = document.createElement("div");
-    tag.className = "proposal-result";
-    tag.textContent = label;
-    card.appendChild(tag);
+function updateSurfaceCard(card, ev) {
+  card.dataset.eventId = String(ev.event_id);
+  card.querySelector(".event-title").textContent = ev.title || "Untitled";
+  card.querySelector(".event-meta").textContent = eventMeta(ev);
+  const reason = card.querySelector(".event-reason");
+  if (ev.reason) {
+    reason.hidden = false;
+    reason.textContent = ev.reason;
+    card.classList.add("is-recommended");
+  } else {
+    reason.hidden = true;
+    reason.textContent = "";
   }
+  updateSurfaceCardState(card, ev);
+}
 
-  approve.addEventListener("click", () => {
-    settle("Approved");
-    resume(proposalId, "approve", note.value.trim());
+function createSurfaceCard(ev) {
+  const card = tmpl("event-card");
+  card.querySelector(".event-add").addEventListener("click", () => {
+    stageAdd(surfacedEvents.get(ev.event_id) || ev);
   });
-  reject.addEventListener("click", () => {
-    settle("Rejected");
-    resume(proposalId, "reject", note.value.trim());
-  });
+  updateSurfaceCard(card, ev);
+  return card;
+}
 
-  messages.appendChild(card);
+function renderSurfaceEvents(view, events) {
+  const target = view.events;
+  if (!target) return;
+  (events || []).forEach((raw) => {
+    const ev = normalizeEvent(raw);
+    if (!ev) return;
+    const existing = surfacedEvents.get(ev.event_id) || {};
+    const merged = { ...existing, ...ev, reason: ev.reason || existing.reason || null };
+    surfacedEvents.set(ev.event_id, merged);
+
+    let card = surfacedCards.get(ev.event_id);
+    if (!card) {
+      card = createSurfaceCard(merged);
+      surfacedCards.set(ev.event_id, card);
+      target.appendChild(card);
+    } else {
+      updateSurfaceCard(card, merged);
+    }
+  });
+  target.hidden = !target.children.length;
   scrollDown();
+}
+
+function applyRecommendations(view, payload) {
+  if (payload.events) renderSurfaceEvents(view, payload.events);
+  (payload.picks || []).forEach((pick) => {
+    const eventId = Number(pick.event_id);
+    if (!Number.isFinite(eventId)) return;
+    const existing = surfacedEvents.get(eventId) || {
+      id: eventId,
+      event_id: eventId,
+      title: "Event " + eventId,
+    };
+    const ev = {
+      ...existing,
+      reason: (pick.reason || existing.reason || "").trim() || null,
+    };
+    surfacedEvents.set(eventId, ev);
+    if (!surfacedCards.has(eventId)) renderSurfaceEvents(view, [ev]);
+    const card = surfacedCards.get(eventId);
+    if (card) updateSurfaceCard(card, ev);
+
+    const staged = desired.get(eventId);
+    if (featuredDirty && staged && !staged.note && ev.reason) {
+      staged.note = ev.reason;
+      renderFeatured();
+    }
+  });
+}
+
+function updateSurfaceCards() {
+  surfacedCards.forEach((card, eventId) => {
+    const ev = surfacedEvents.get(eventId);
+    if (ev) updateSurfaceCardState(card, ev);
+  });
 }
 
 async function readStream(res, view) {
@@ -183,8 +253,10 @@ function handleEvent(chunk, view) {
     scrollDown();
   } else if (name === "status") {
     setTools(view, payload.tools_used);
-  } else if (name === "proposal") {
-    addProposal(payload.proposal_id, payload.events || []);
+  } else if (name === "events") {
+    renderSurfaceEvents(view, payload.events || []);
+  } else if (name === "propose") {
+    applyRecommendations(view, payload);
   } else if (name === "done") {
     if (payload.thread_id) threadId = payload.thread_id;
   } else if (name === "error") {
@@ -222,21 +294,11 @@ async function send(url, body) {
   } finally {
     streaming = false;
     askBtn.disabled = false;
-    if (!featuredPanel.hidden) loadFeatured();
   }
 }
 
 function ask(text) {
   send("ask/stream", { message: text, thread_id: threadId });
-}
-
-function resume(proposalId, decision, note) {
-  send("resume", {
-    thread_id: threadId,
-    proposal_id: proposalId,
-    decision,
-    note: note || null,
-  });
 }
 
 form.addEventListener("submit", (e) => {
@@ -261,8 +323,19 @@ input.addEventListener("keydown", (e) => {
   }
 });
 
+const desired = new Map();
+let featuredDirty = false;
+
+function setDirty(v) {
+  featuredDirty = v;
+  featuredApply.disabled = !v;
+}
+
+function stagedHas(eventId) {
+  return desired.has(eventId);
+}
+
 async function loadFeatured() {
-  featuredList.textContent = "Loading…";
   try {
     const res = await fetch("editors-choice");
     if (res.status === 401) {
@@ -270,19 +343,61 @@ async function loadFeatured() {
       return;
     }
     const data = await res.json();
-    renderFeatured(data.items || []);
+    desired.clear();
+    (data.items || []).forEach((it) => {
+      desired.set(it.event_id, {
+        event_id: it.event_id,
+        title: it.title,
+        date: it.date,
+        time: it.time,
+        location: it.location,
+        note: it.note || null,
+      });
+    });
+    setDirty(false);
+    renderFeatured();
+    document.dispatchEvent(new CustomEvent("featured-changed"));
   } catch {
     featuredList.textContent = "Could not load featured events.";
   }
 }
 
-function renderFeatured(items) {
+function stageAdd(ev) {
+  const event = normalizeEvent(ev);
+  if (!event) return;
+  if (desired.has(event.event_id)) {
+    showFeatured();
+    updateSurfaceCards();
+    return;
+  }
+  desired.set(event.event_id, {
+    event_id: event.event_id,
+    title: event.title,
+    date: event.date,
+    time: event.time,
+    location: event.location,
+    note: event.reason || null,
+  });
+  setDirty(true);
+  showFeatured();
+  document.dispatchEvent(new CustomEvent("featured-changed"));
+}
+
+function stageRemove(eventId) {
+  if (desired.delete(eventId)) {
+    setDirty(true);
+    renderFeatured();
+    document.dispatchEvent(new CustomEvent("featured-changed"));
+  }
+}
+
+function renderFeatured() {
   featuredList.textContent = "";
-  if (!items.length) {
+  if (!desired.size) {
     featuredList.textContent = "No featured events yet.";
     return;
   }
-  items.forEach((item) => {
+  desired.forEach((item) => {
     const row = document.createElement("div");
     row.className = "featured-row";
 
@@ -292,14 +407,18 @@ function renderFeatured(items) {
     title.textContent = item.title || "Untitled";
     const meta = document.createElement("div");
     meta.className = "event-meta";
-    meta.textContent = [item.note, item.selected_at].filter(Boolean).join(" · ");
+    meta.textContent = [item.date, item.time, item.location, item.note]
+      .filter(Boolean)
+      .join(" · ");
     body.appendChild(title);
     body.appendChild(meta);
 
     const remove = document.createElement("button");
-    remove.className = "ghost-btn";
-    remove.textContent = "Remove";
-    remove.addEventListener("click", () => removeFeatured(item.event_id, row));
+    remove.className = "bubble-btn";
+    remove.type = "button";
+    remove.textContent = "−";
+    remove.title = "Remove from Editor's Choice";
+    remove.addEventListener("click", () => stageRemove(item.event_id));
 
     row.appendChild(body);
     row.appendChild(remove);
@@ -307,29 +426,46 @@ function renderFeatured(items) {
   });
 }
 
-async function removeFeatured(eventId, row) {
+async function applyFeatured() {
+  if (!featuredDirty) return;
+  featuredApply.disabled = true;
+  const items = [...desired.values()].map((it) => ({
+    event_id: it.event_id,
+    note: it.note || null,
+  }));
   try {
-    const res = await fetch("editors-choice/" + encodeURIComponent(eventId), {
-      method: "DELETE",
+    const res = await fetch("editors-choice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
     });
-    if (res.ok) row.remove();
+    if (res.status === 401) {
+      window.location.assign("login.html");
+      return;
+    }
+    if (res.ok) await loadFeatured();
+    else setDirty(true);
   } catch {
-    /* leave the row in place on failure */
+    setDirty(true);
   }
 }
 
-function openFeatured() {
+function showFeatured() {
   featuredPanel.hidden = false;
-  loadFeatured();
+  renderFeatured();
 }
 
 featuredToggle.addEventListener("click", () => {
-  if (featuredPanel.hidden) openFeatured();
+  if (featuredPanel.hidden) showFeatured();
   else featuredPanel.hidden = true;
 });
 featuredClose.addEventListener("click", () => {
   featuredPanel.hidden = true;
 });
+featuredApply.addEventListener("click", applyFeatured);
+document.addEventListener("featured-changed", updateSurfaceCards);
+
+loadFeatured();
 
 logoutBtn.addEventListener("click", async () => {
   await fetch("logout", { method: "POST" }).catch(() => {});
