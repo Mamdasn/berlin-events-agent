@@ -43,13 +43,19 @@ def test_day_analysis_aggregates(seed):
 
 def test_propose_validates_missing(seed):
     with pytest.raises(ToolError):
-        tools.dispatch("propose_editors_choice", {"event_ids": [999]})
+        tools.dispatch(
+            "propose_editors_choice",
+            {"picks": [{"event_id": 999, "reason": "Worth checking"}]},
+        )
 
 
-def test_propose_stages_without_writing(seed):
-    out = tools.dispatch("propose_editors_choice", {"event_ids": [1], "note": "unusual"})
-    assert out["pending_approval"] is True
-    assert out["event_ids"] == [1]
+def test_propose_returns_reasons_without_writing(seed):
+    out = tools.dispatch(
+        "propose_editors_choice",
+        {"picks": [{"event_id": 1, "reason": "Unusual civic angle"}]},
+    )
+    assert out["picks"] == [{"event_id": 1, "reason": "Unusual civic angle"}]
+    assert out["events"][0]["id"] == 1
 
 
 def test_commit_not_exposed_to_llm():

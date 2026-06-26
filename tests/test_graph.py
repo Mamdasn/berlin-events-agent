@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from agent.db.repository import events
+from agent import memory
 from agent.graph import build, nodes
 
 
@@ -46,63 +47,57 @@ def repo(monkeypatch):
              "lat": 52.5, "lon": 13.4}
     monkeypatch.setattr(events, "search", lambda **k: [event])
     monkeypatch.setattr(events, "by_ids", lambda ids: [event] if 1 in ids else [])
+    monkeypatch.setattr(memory, "load_history", lambda thread_id: [])
+    monkeypatch.setattr(memory, "save_history", lambda thread_id, messages: None)
+
+    async def inline_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(build, "run_in_threadpool", inline_threadpool)
     return event
 
 
-def test_discovery_then_proposal_interrupt(repo, monkeypatch):
+def test_discovery_surfaces_events_then_propose_adds_reason(repo, monkeypatch):
     llm = ScriptedLLM([
         _assistant_tool("query_events", '{"keyword": "ritual"}'),
-        _assistant_tool("propose_editors_choice", '{"event_ids": [1], "note": "odd"}', "c2"),
+        _assistant_tool(
+            "propose_editors_choice",
+            '{"picks": [{"event_id": 1, "reason": "odd public ritual"}]}',
+            "c2",
+        ),
+        _assistant_text("I would start with Odd ritual."),
     ])
     monkeypatch.setattr(nodes.deepseek, "chat", llm)
 
     out = _drain(build.stream_answer("t1", "find something weird", budget=5))
     names = [n for n, _ in out]
-    assert "proposal" in names
-    proposal = dict(out)["proposal"]
-    assert proposal["events"][0]["id"] == 1
-    assert proposal["proposal_id"]
+    assert names.count("events") == 1
+    assert "propose" in names
+    surfaced = [data for name, data in out if name == "events"][0]
+    assert surfaced["events"][0]["event_id"] == 1
+    proposal = dict(out)["propose"]
+    assert proposal["picks"] == [{"event_id": 1, "reason": "odd public ritual"}]
+    text = "".join(d["text"] for n, d in out if n == "token")
+    assert "Odd ritual" in text
 
 
-def test_approve_commits(repo, monkeypatch):
-    committed = {}
-    monkeypatch.setattr(events, "feature",
-                        lambda event_ids, note=None, selected_by=None: committed.update(
-                            ids=list(event_ids), note=note) or len(event_ids))
-
+def test_direct_propose_surfaces_event_for_action(repo, monkeypatch):
     llm = ScriptedLLM([
-        _assistant_tool("propose_editors_choice", '{"event_ids": [1]}'),
-        _assistant_text("Featured it."),
+        _assistant_tool(
+            "propose_editors_choice",
+            '{"picks": [{"event_id": 1, "reason": "strong local relevance"}]}',
+        ),
+        _assistant_text("Recommended it."),
     ])
     monkeypatch.setattr(nodes.deepseek, "chat", llm)
 
-    out = _drain(build.stream_answer("t2", "feature event 1", budget=5))
-    proposal_id = dict(out)["proposal"]["proposal_id"]
-
-    resumed = _drain(build.stream_resume("t2", proposal_id, "approve", "looks good"))
-    assert committed["ids"] == [1]
-    text = "".join(d["text"] for n, d in resumed if n == "token")
-    assert "Featured" in text
-
-
-def test_reject_does_not_commit(repo, monkeypatch):
-    monkeypatch.setattr(events, "feature",
-                        lambda *a, **k: pytest.fail("commit must not run on reject"))
-
-    llm = ScriptedLLM([
-        _assistant_tool("propose_editors_choice", '{"event_ids": [1]}'),
-        _assistant_text("Okay, leaving it out."),
-    ])
-    monkeypatch.setattr(nodes.deepseek, "chat", llm)
-
-    out = _drain(build.stream_answer("t3", "feature event 1", budget=5))
-    proposal_id = dict(out)["proposal"]["proposal_id"]
-
-    resumed = _drain(build.stream_resume("t3", proposal_id, "reject", None))
-    text = "".join(d["text"] for n, d in resumed if n == "token")
-    assert "leaving it out" in text
+    out = _drain(build.stream_answer("t2", "recommend event 1", budget=5))
+    assert [name for name, _ in out if name in ("events", "propose")] == [
+        "events",
+        "propose",
+    ]
+    assert dict(out)["events"]["events"][0]["title"] == "Odd ritual"
 
 
-def test_expired_proposal_errors():
-    out = _drain(build.stream_resume("t4", "missing", "approve", None))
-    assert out[0][0] == "error"
+def test_resume_flow_removed():
+    assert not hasattr(build, "stream_resume")

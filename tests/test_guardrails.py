@@ -18,4 +18,4 @@ def test_sanitize_truncates(monkeypatch):
 def test_system_prompt_has_security_stance():
     prompt = guardrails.system_prompt()
     assert "untrusted data" in prompt
-    assert "approve" in prompt.lower()
+    assert "editor selects the final set and applies it" in prompt
