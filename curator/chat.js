@@ -39,8 +39,27 @@ function escapeHtml(s) {
   );
 }
 
+function mentionSpan(id, label) {
+  const staged = stagedHas(Number(id));
+  const tip = staged ? "Already in Editor's Choice" : "Add to Editor's Choice";
+  return (
+    '<span class="event-mention' + (staged ? " is-added" : "") +
+    '" data-event-id="' + id + '" tabindex="0">' +
+    '<span class="wc wc-left" aria-hidden="true">✦</span>' +
+    '<span class="em-text">' + label + "</span>" +
+    '<span class="wc wc-right" aria-hidden="true">✦</span>' +
+    '<button class="em-add" type="button" data-event-id="' + id + '"' +
+    (staged ? " disabled" : "") +
+    ' title="' + tip + '" aria-label="' + tip + '">' +
+    (staged ? ICON_CHECK : ICON_ADD) +
+    "</button>" +
+    "</span>"
+  );
+}
+
 function mdInline(s) {
   return s
+    .replace(/\[\[(\d+)\|([^\]|]+)\]\]/g, (_, id, label) => mentionSpan(id, label))
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*\s][^*]*?)\*/g, "<em>$1</em>")
@@ -48,7 +67,14 @@ function mdInline(s) {
 }
 
 function renderMarkdown(text) {
-  const lines = escapeHtml(text || "").split("\n");
+  text = text || "";
+  // Hold back an incomplete trailing mention marker so a chunk-split [[id|...
+  // never flashes as literal text while streaming.
+  const open = text.lastIndexOf("[[");
+  if (open !== -1 && text.indexOf("]]", open) === -1) {
+    text = text.slice(0, open);
+  }
+  const lines = escapeHtml(text).split("\n");
   let html = "";
   let list = null;
   const closeList = () => {
@@ -227,6 +253,54 @@ function updateSurfaceCards() {
     if (ev) updateSurfaceCardState(card, ev);
   });
 }
+
+function updateMentionStates() {
+  messages.querySelectorAll(".event-mention").forEach((mention) => {
+    const eventId = Number(mention.dataset.eventId);
+    const staged = stagedHas(eventId);
+    const add = mention.querySelector(".em-add");
+    mention.classList.toggle("is-added", staged);
+    if (!add) return;
+    add.disabled = staged;
+    add.innerHTML = staged ? ICON_CHECK : ICON_ADD;
+    const tip = staged ? "Already in Editor's Choice" : "Add to Editor's Choice";
+    add.title = tip;
+    add.setAttribute("aria-label", tip);
+  });
+}
+
+messages.addEventListener("click", (e) => {
+  const add = e.target.closest(".em-add");
+  if (!add) return;
+  const mention = add.closest(".event-mention");
+  const eventId = Number(add.dataset.eventId);
+  if (!Number.isFinite(eventId)) return;
+  const fallback = {
+    event_id: eventId,
+    title: mention ? mention.querySelector(".em-text").textContent : "Event " + eventId,
+  };
+  stageAdd(surfacedEvents.get(eventId) || fallback);
+});
+
+function linkMentionCard(eventId, on) {
+  messages
+    .querySelectorAll('.surface-event[data-event-id="' + eventId + '"]')
+    .forEach((card) => card.classList.toggle("is-linked", on));
+}
+
+messages.addEventListener("mouseover", (e) => {
+  const mention = e.target.closest(".event-mention");
+  if (mention && !mention.contains(e.relatedTarget)) {
+    linkMentionCard(mention.dataset.eventId, true);
+  }
+});
+
+messages.addEventListener("mouseout", (e) => {
+  const mention = e.target.closest(".event-mention");
+  if (mention && !mention.contains(e.relatedTarget)) {
+    linkMentionCard(mention.dataset.eventId, false);
+  }
+});
 
 async function readStream(res, view) {
   const reader = res.body.getReader();
@@ -536,6 +610,7 @@ featuredApply.addEventListener("click", applyFeatured);
 featuredReset.addEventListener("click", resetFeatured);
 sidebarOverlay.addEventListener("click", hideFeatured);
 document.addEventListener("featured-changed", updateSurfaceCards);
+document.addEventListener("featured-changed", updateMentionStates);
 
 document.querySelectorAll("[data-prompt]").forEach((button) => {
   button.addEventListener("click", () => {

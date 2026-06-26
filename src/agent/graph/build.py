@@ -21,8 +21,9 @@ _TOOL_RESPONSE_NUDGE = (
     "You have just used event tools and may have surfaced event cards in the UI. "
     "Continue the conversation in natural language. If you want to recommend "
     "Editor's Choice candidates, call propose_editors_choice with reasons first. "
-    "When you are ready to answer, mention the relevant events with ids and a short "
-    "reason for each. Do not end the turn with only cards or tool output."
+    "When you are ready to answer, mention each relevant event by wrapping its title "
+    "in a [[id|Title]] marker and give a short reason for each. Do not end the turn "
+    "with only cards or tool output."
 )
 
 
@@ -147,7 +148,7 @@ def _fallback_answer(surfaced_events, proposed_reasons):
         )
         reason = proposed_reasons.get(event_id) or _fallback_reason(event)
         suffix = f" — {meta}" if meta else ""
-        lines.append(f"{index}. {title}{suffix} (id {event_id}). {reason}")
+        lines.append(f"{index}. [[{event_id}|{title}]]{suffix}. {reason}")
     if count > 5:
         lines.append(f"There are {count - 5} more matching cards in the workspace.")
     return "\n".join(lines)
