@@ -1,5 +1,8 @@
+import asyncio
+
 import pyotp
 import pytest
+from fastapi import HTTPException
 
 from agent import secret_store
 from agent import service
@@ -41,8 +44,10 @@ def test_totp_rejected_when_unconfigured():
 
 def _init_serializer(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "SECRET_STORE_PATH", str(tmp_path / "secrets.json"))
+    monkeypatch.setattr(config, "REDIS_URL", "")
     monkeypatch.delenv("COOKIE_SESSION_SECRET", raising=False)
     service._serializer = None
+    service._redis = None
 
 
 def test_session_roundtrip(tmp_path, monkeypatch):
@@ -97,3 +102,35 @@ def test_totp_env_override(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "SECRET_STORE_PATH", str(tmp_path / "secrets.json"))
     monkeypatch.setenv("ADMIN_TOTP_SECRET", "env-override-secret")
     assert secret_store.get_active_totp_secret() == "env-override-secret"
+
+
+def _route(path):
+    return next(route for route in service.app.routes if getattr(route, "path", None) == path)
+
+
+def test_curator_app_assets_require_session(tmp_path, monkeypatch):
+    _init_serializer(monkeypatch, tmp_path)
+
+    for path in ("/style.css", "/chat.js"):
+        deps = _route(path).dependant.dependencies
+        assert any(dep.call is service.require_session for dep in deps)
+
+    assert not _route("/login.css").dependant.dependencies
+
+    class Request:
+        cookies = {}
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(service.require_session(Request()))
+    assert exc.value.status_code == 401
+
+
+def test_curator_app_assets_are_private_when_logged_in(tmp_path, monkeypatch):
+    _init_serializer(monkeypatch, tmp_path)
+
+    for handler in (service.style, service.chat_js):
+        response = asyncio.run(handler(sid="sid"))
+        assert response.headers["cache-control"] == "private, no-store"
+
+    login_response = asyncio.run(service.login_css())
+    assert "login.css" in str(login_response.path)

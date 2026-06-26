@@ -169,14 +169,25 @@ async def login_page():
     return FileResponse(CURATOR_DIR / "login.html")
 
 
+@app.get("/login.css")
+async def login_css():
+    return FileResponse(CURATOR_DIR / "login.css")
+
+
 @app.get("/style.css")
-async def style():
-    return FileResponse(CURATOR_DIR / "style.css")
+async def style(sid: str = Depends(require_session)):
+    return FileResponse(
+        CURATOR_DIR / "style.css",
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @app.get("/chat.js")
-async def chat_js():
-    return FileResponse(CURATOR_DIR / "chat.js")
+async def chat_js(sid: str = Depends(require_session)):
+    return FileResponse(
+        CURATOR_DIR / "chat.js",
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @app.get("/qrcode.js")
