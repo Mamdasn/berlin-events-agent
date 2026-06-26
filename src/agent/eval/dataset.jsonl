@@ -1,0 +1,15 @@
+{"id":"keyword_climate","question":"Find climate-related events.","tool":"query_events","args":{"keyword":"climate","limit":10},"expect":{"count":1,"ids":[1]}}
+{"id":"district_neukolln","question":"What is happening in Neukolln?","tool":"query_events","args":{"district":"Neukolln","limit":10},"expect":{"count":1,"ids":[2]}}
+{"id":"category_workshop","question":"Find workshops.","tool":"query_events","args":{"category":"Workshop","limit":10},"expect":{"count":1,"ids":[5]}}
+{"id":"date_window","question":"Show events on 2026-06-27.","tool":"query_events","args":{"date_from":"2026-06-27","date_to":"2026-06-27","limit":10},"expect":{"count":3,"ids":[1,2,4]}}
+{"id":"keyword_advice","question":"Find tenant advice.","tool":"query_events","args":{"keyword":"advice","limit":10},"expect":{"count":1,"ids":[4]}}
+{"id":"semantic_jazz","question":"Find jazz events by meaning.","tool":"semantic_search","args":{"query":"jazz","top_k":5},"expect":{"mode":"keyword_fallback","count":1,"ids":[2]}}
+{"id":"semantic_repair","question":"Find a repair event by meaning.","tool":"semantic_search","args":{"query":"repair","top_k":5},"expect":{"mode":"keyword_fallback","count":1,"ids":[3]}}
+{"id":"near_event","question":"What is near the march?","tool":"nearby_events","args":{"event_id":1,"radius_km":1.5,"limit":10},"expect":{"count":1,"ids":[4]}}
+{"id":"near_coords","question":"What is near the club?","tool":"nearby_events","args":{"lat":52.4808,"lon":13.431,"radius_km":0.5,"limit":10},"expect":{"count":1,"ids":[2]}}
+{"id":"day_27","question":"Summarize 2026-06-27.","tool":"day_analysis","args":{"date":"2026-06-27"},"expect":{"total_events":3,"by_category":{"Demonstration":1,"Kultur":1,"Support":1}}}
+{"id":"day_28","question":"Summarize 2026-06-28.","tool":"day_analysis","args":{"date":"2026-06-28"},"expect":{"total_events":2,"by_category":{"Community":1,"Workshop":1}}}
+{"id":"propose_single","question":"Recommend the repair cafe.","tool":"propose_editors_choice","args":{"picks":[{"event_id":3,"reason":"Practical community service with clear local value"}]},"expect":{"picks":[{"event_id":3,"reason":"Practical community service with clear local value"}],"ids":[3]}}
+{"id":"propose_pair","question":"Recommend the march and tenant advice.","tool":"propose_editors_choice","args":{"picks":[{"event_id":1,"reason":"Strong civic relevance"},{"event_id":4,"reason":"Useful accountability angle"}]},"expect":{"picks":[{"event_id":1,"reason":"Strong civic relevance"},{"event_id":4,"reason":"Useful accountability angle"}],"ids":[1,4]}}
+{"id":"limited_sample","question":"Give me a small sample.","tool":"query_events","args":{"limit":2},"expect":{"count":2,"ids":[1,2]}}
+{"id":"keyword_tenant","question":"Find tenant-related events.","tool":"query_events","args":{"keyword":"tenant","limit":10},"expect":{"count":1,"ids":[4]}}
