@@ -5,7 +5,6 @@ from agent.config import config
 from agent.db.client import db
 
 _HISTORY_PREFIX = "ec:history:"
-_PENDING_PREFIX = "ec:pending:"
 
 _mem = {}
 
@@ -37,14 +36,6 @@ def _set(key, value, ttl):
         _mem[key] = (value, time.time() + ttl)
 
 
-def _delete(key):
-    r = _redis()
-    if r is not None:
-        r.delete(key)
-    else:
-        _mem.pop(key, None)
-
-
 def load_history(thread_id):
     return _get(_HISTORY_PREFIX + thread_id) or []
 
@@ -52,19 +43,3 @@ def load_history(thread_id):
 def save_history(thread_id, messages):
     trimmed = messages[-(config.MEMORY_MAX_TURNS * 2):]
     _set(_HISTORY_PREFIX + thread_id, trimmed, config.MEMORY_TTL_SECONDS)
-
-
-def stage_proposal(thread_id, proposal_id, payload):
-    _set(
-        _PENDING_PREFIX + thread_id + ":" + proposal_id,
-        payload,
-        config.PROPOSAL_TTL_SECONDS,
-    )
-
-
-def take_proposal(thread_id, proposal_id):
-    key = _PENDING_PREFIX + thread_id + ":" + proposal_id
-    payload = _get(key)
-    if payload is not None:
-        _delete(key)
-    return payload

@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from agent import secret_store
 from agent._password import verify_password
 from agent.config import config
+from agent.db.client import db
 from agent.db.repository import events
 
 CURATOR_DIR = Path(__file__).resolve().parents[2] / "curator"
@@ -133,21 +134,6 @@ async def agent_events(thread_id, message):
         thread_id=thread_id,
         message=message,
         budget=config.AGENT_MAX_TOOL_CALLS,
-    ):
-        yield name, data
-
-
-async def agent_resume_events(thread_id, proposal_id, decision, note):
-    try:
-        from agent.graph.build import stream_resume
-    except Exception:
-        yield "error", {"message": "The curation agent is not wired up yet."}
-        return
-    async for name, data in stream_resume(
-        thread_id=thread_id,
-        proposal_id=proposal_id,
-        decision=decision,
-        note=note,
     ):
         yield name, data
 
@@ -268,32 +254,16 @@ async def ask_stream(request: Request, sid: str = Depends(require_session)):
     )
 
 
-@app.post("/resume")
-async def resume(request: Request, sid: str = Depends(require_session)):
-    body = await request.json()
-    thread_id = body.get("thread_id") or sid
-    proposal_id = body.get("proposal_id")
-    decision = body.get("decision")
-    note = body.get("note")
-
-    if decision not in ("approve", "reject"):
-        raise HTTPException(status_code=400, detail="decision must be approve or reject")
-
-    async def generate():
-        try:
-            async for name, data in agent_resume_events(
-                thread_id, proposal_id, decision, note
-            ):
-                yield sse(name, data)
-        except Exception:
-            yield sse("error", {"message": "The agent failed while resuming."})
-        yield sse("done", {"thread_id": thread_id})
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+def _invalidate_map_cache():
+    r = db.redis(config.WEBAPP_PG_CACHE_DB)
+    if r is None:
+        return
+    try:
+        for pattern in ("locations::*", "page::*", "api::*"):
+            for key in r.scan_iter(match=pattern, count=200):
+                r.delete(key)
+    except Exception:
+        log.warning("map cache invalidation failed", exc_info=True)
 
 
 @app.get("/editors-choice")
@@ -302,9 +272,17 @@ async def editors_choice_list(sid: str = Depends(require_session)):
     return {"items": items}
 
 
-@app.delete("/editors-choice/{event_id}")
-async def editors_choice_delete(event_id: int, sid: str = Depends(require_session)):
-    removed = await run_in_threadpool(events.unfeature, event_id)
-    if not removed:
-        raise HTTPException(status_code=404, detail="not featured")
-    return {"ok": True}
+@app.post("/editors-choice")
+async def editors_choice_set(request: Request, sid: str = Depends(require_session)):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    items = [
+        {"event_id": it["event_id"], "note": it.get("note")}
+        for it in (body.get("items") or [])
+        if isinstance(it, dict) and it.get("event_id") is not None
+    ]
+    await run_in_threadpool(events.set_featured, items)
+    await run_in_threadpool(_invalidate_map_cache)
+    return {"ok": True, "count": len(items)}

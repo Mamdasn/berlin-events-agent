@@ -186,6 +186,33 @@ class EventRepository:
 
         return self.db.execute(run)
 
+    def set_featured(self, items, selected_by=None):
+        selected_by = selected_by or self.config.EDITOR_NAME
+        desired = {}
+        for item in items:
+            desired[int(item["event_id"])] = item.get("note") or None
+        rows = [(event_id, note, selected_by) for event_id, note in desired.items()]
+        ids = list(desired)
+
+        def run(cur):
+            if not ids:
+                cur.execute("DELETE FROM editors_choice")
+                return cur.rowcount
+            cur.execute("DELETE FROM editors_choice WHERE event_id <> ALL(%s)", (ids,))
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO editors_choice (event_id, note, selected_by)
+                VALUES %s
+                ON CONFLICT (event_id)
+                DO UPDATE SET note = EXCLUDED.note
+                """,
+                rows,
+            )
+            return cur.rowcount
+
+        return self.db.execute(run)
+
     def featured(self, limit=200):
         sql = """
             SELECT ec.event_id, e.thema, ec.note, ec.selected_by, ec.selected_at,

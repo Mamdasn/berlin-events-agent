@@ -5,10 +5,8 @@ import secrets
 from starlette.concurrency import run_in_threadpool
 
 from agent import memory
-from agent.config import config
 from agent.graph import guardrails, nodes
 from agent.graph.state import AgentState
-from agent.tools.commit_editors_choice import commit_editors_choice
 
 _CHUNK = 80
 
@@ -73,8 +71,37 @@ def _history_view(messages):
     ]
 
 
+def _event_payload(event):
+    event_id = event.get("id") or event.get("event_id")
+    return {
+        "id": event_id,
+        "event_id": event_id,
+        "title": event.get("title") or event.get("thema") or "Untitled",
+        "date": event.get("date"),
+        "time": event.get("time") or event.get("von"),
+        "location": event.get("location") or event.get("versammlungsort"),
+        "district": event.get("district"),
+        "category": event.get("category"),
+    }
+
+
+def _new_events(events, seen_event_ids):
+    surfaced = []
+    for event in events or []:
+        event_id = event.get("id") or event.get("event_id")
+        if event_id is None:
+            continue
+        event_id = int(event_id)
+        if event_id in seen_event_ids:
+            continue
+        seen_event_ids.add(event_id)
+        surfaced.append(_event_payload({**event, "id": event_id}))
+    return surfaced
+
+
 async def _drive(state: AgentState):
     nudged = False
+    seen_event_ids = set()
     while True:
         if not state.budget_left and not nudged:
             state.messages.append({"role": "system", "content": _BUDGET_DONE})
@@ -99,7 +126,6 @@ async def _drive(state: AgentState):
             memory.save_history(state.thread_id, _history_view(state.messages))
             return
 
-        pending = None
         for tc in tool_calls:
             name, args, parse_err = nodes.parse_tool_call(tc)
             if parse_err:
@@ -109,42 +135,17 @@ async def _drive(state: AgentState):
             result, tool_err = await run_in_threadpool(nodes.run_tool, name, args)
             state.used_tool(name)
 
-            if name == "propose_editors_choice" and not tool_err:
-                state.messages.append(
-                    nodes.tool_message(
-                        tc["id"],
-                        {
-                            "pending_approval": True,
-                            "event_ids": result["event_ids"],
-                            "note": result["note"],
-                        },
-                    )
-                )
-                pending = result
-            else:
-                payload = {"error": tool_err} if tool_err else result
-                state.messages.append(nodes.tool_message(tc["id"], payload))
+            payload = {"error": tool_err} if tool_err else result
+            state.messages.append(nodes.tool_message(tc["id"], payload))
+
+            if not tool_err:
+                surfaced = _new_events(result.get("events"), seen_event_ids)
+                if surfaced:
+                    yield "events", {"events": surfaced}
+                if name == "propose_editors_choice":
+                    yield "propose", {"picks": result["picks"]}
 
             yield "status", {"tools_used": state.tools_used}
-
-        if pending is not None:
-            proposal_id = secrets.token_urlsafe(12)
-            memory.stage_proposal(
-                state.thread_id,
-                proposal_id,
-                {
-                    "messages": state.messages,
-                    "event_ids": pending["event_ids"],
-                    "note": pending["note"],
-                    "tools_used": state.tools_used,
-                },
-            )
-            yield "proposal", {
-                "proposal_id": proposal_id,
-                "events": pending["events"],
-                "note": pending["note"],
-            }
-            return
 
 
 async def stream_answer(thread_id, message, budget):
@@ -159,38 +160,5 @@ async def stream_answer(thread_id, message, budget):
         + [{"role": "user", "content": text}]
     )
     state = AgentState(thread_id, messages, [], budget)
-    async for event in _drive(state):
-        yield event
-
-
-async def stream_resume(thread_id, proposal_id, decision, note):
-    pending = await run_in_threadpool(memory.take_proposal, thread_id, proposal_id)
-    if not pending:
-        yield "error", {"message": "This proposal expired or was already handled."}
-        return
-
-    event_ids = pending["event_ids"]
-    note = (note or "").strip() or pending.get("note")
-
-    if decision == "approve":
-        await run_in_threadpool(
-            commit_editors_choice, event_ids, note, config.EDITOR_NAME
-        )
-        decision_text = (
-            "EDITOR DECISION: APPROVED. The proposed events were saved as Editor's "
-            "Choice and now show on the public map. Confirm this briefly to the editor."
-        )
-    else:
-        decision_text = (
-            "EDITOR DECISION: REJECTED. Do not feature these events. Acknowledge "
-            "briefly and offer to keep looking."
-        )
-    if note:
-        decision_text += f" Editor note: {note}"
-
-    messages = pending["messages"] + [{"role": "user", "content": decision_text}]
-    state = AgentState(
-        thread_id, messages, pending.get("tools_used", []), config.AGENT_MAX_TOOL_CALLS
-    )
     async for event in _drive(state):
         yield event

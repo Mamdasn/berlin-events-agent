@@ -8,6 +8,7 @@ class Config:
     REDIS_URL = os.environ.get("REDIS_URL", "")
     AGENT_REDIS_DB_MEMORY = int(os.environ.get("AGENT_REDIS_DB_MEMORY", "3"))
     AGENT_REDIS_DB_CACHE = int(os.environ.get("AGENT_REDIS_DB_CACHE", "4"))
+    WEBAPP_PG_CACHE_DB = int(os.environ.get("WEBAPP_PG_CACHE_DB", "1"))
 
     COOKIE_SESSION_SECRET = os.environ.get("COOKIE_SESSION_SECRET", "")
     SESSION_COOKIE = os.environ.get("SESSION_COOKIE", "ec_session")
@@ -38,7 +39,6 @@ class Config:
     AGENT_RESULT_LIMIT = int(os.environ.get("AGENT_RESULT_LIMIT", "25"))
     AGENT_FIELD_MAX_CHARS = int(os.environ.get("AGENT_FIELD_MAX_CHARS", "600"))
     AGENT_MESSAGE_MAX_CHARS = int(os.environ.get("AGENT_MESSAGE_MAX_CHARS", "2000"))
-    PROPOSAL_TTL_SECONDS = int(os.environ.get("PROPOSAL_TTL_SECONDS", "1800"))
     MEMORY_TTL_SECONDS = int(os.environ.get("MEMORY_TTL_SECONDS", "3600"))
     MEMORY_MAX_TURNS = int(os.environ.get("MEMORY_MAX_TURNS", "12"))
 
