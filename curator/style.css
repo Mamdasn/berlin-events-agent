@@ -567,19 +567,22 @@ button:disabled {
     0 8px 24px -6px rgba(168, 199, 250, 0.25);
 }
 
-/* Inline event mentions inside the agent's prose. A named event becomes a
-   hoverable entity: tonal pill, flanking wildcards, and a + to stage it.
-   Wildcards/button are absolutely positioned so the prose never reflows. */
 .event-mention {
   position: relative;
-  display: inline-block;
-  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(100%, 360px);
+  margin: 0 3px 3px;
+  padding: 3px 30px 3px 9px;
+  border: 1px solid var(--surface-4);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
   font-weight: 600;
   cursor: pointer;
-  border-radius: 8px;
-  padding: 0 2px;
-  text-decoration: underline dotted rgba(168, 199, 250, 0.45);
-  text-underline-offset: 3px;
+  text-decoration: none;
+  vertical-align: baseline;
   outline: none;
   -webkit-tap-highlight-color: transparent;
   transition:
@@ -592,42 +595,34 @@ button:disabled {
 .event-mention:focus-visible,
 .event-mention:focus-within {
   background: rgba(168, 199, 250, 0.14);
-  text-decoration-color: transparent;
-  box-shadow: inset 0 0 0 1px rgba(168, 199, 250, 0.35);
+  border-color: rgba(168, 199, 250, 0.45);
+  box-shadow:
+    inset 0 0 0 1px rgba(168, 199, 250, 0.25),
+    0 10px 26px rgba(0, 0, 0, 0.24);
 }
 
 .event-mention.is-added {
   color: var(--success);
-  text-decoration-color: rgba(163, 245, 176, 0.45);
+  border-color: rgba(163, 245, 176, 0.45);
+  background: rgba(163, 245, 176, 0.08);
 }
 
 .event-mention.is-added:hover,
 .event-mention.is-added:focus-visible,
 .event-mention.is-added:focus-within {
   background: rgba(163, 245, 176, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(163, 245, 176, 0.35);
+  box-shadow:
+    inset 0 0 0 1px rgba(163, 245, 176, 0.35),
+    0 10px 26px rgba(0, 0, 0, 0.24);
 }
 
 .event-mention .wc {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%) scale(0.4);
-  opacity: 0;
+  flex: 0 0 auto;
+  opacity: 0.9;
   font-weight: 700;
   pointer-events: none;
-  color: var(--primary);
-  text-shadow: 0 0 10px rgba(168, 199, 250, 0.7);
-  transition:
-    opacity 0.28s cubic-bezier(0.2, 0, 0, 1),
-    transform 0.28s cubic-bezier(0.2, 0, 0, 1);
-}
-
-.event-mention .wc-left {
-  left: -0.9em;
-}
-
-.event-mention .wc-right {
-  right: -0.9em;
+  color: var(--tertiary);
+  text-shadow: 0 0 10px rgba(255, 212, 160, 0.55);
 }
 
 .event-mention.is-added .wc {
@@ -635,20 +630,21 @@ button:disabled {
   text-shadow: 0 0 10px rgba(163, 245, 176, 0.7);
 }
 
-.event-mention:hover .wc,
-.event-mention:focus-visible .wc,
-.event-mention:focus-within .wc {
-  opacity: 1;
-  transform: translateY(-50%) scale(1);
+.event-mention .em-text {
+  min-width: 0;
+  max-width: min(45vw, 260px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .event-mention .em-add {
   position: absolute;
-  top: -9px;
-  right: -13px;
+  top: 50%;
+  right: 4px;
   z-index: 5;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -658,9 +654,9 @@ button:disabled {
   background: var(--primary);
   color: var(--primary-ink);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-  opacity: 0;
-  transform: scale(0.4) translateY(4px);
-  pointer-events: none;
+  opacity: 1;
+  transform: translateY(-50%);
+  pointer-events: auto;
   transition:
     opacity 0.22s cubic-bezier(0.2, 0, 0, 1),
     transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -669,17 +665,9 @@ button:disabled {
 }
 
 .event-mention .em-add .material-symbols-outlined {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1;
-}
-
-.event-mention:hover .em-add,
-.event-mention:focus-visible .em-add,
-.event-mention:focus-within .em-add {
-  opacity: 1;
-  transform: scale(1) translateY(0);
-  pointer-events: auto;
 }
 
 .event-mention .em-add:hover {
@@ -687,13 +675,106 @@ button:disabled {
 }
 
 .event-mention .em-add:active {
-  transform: scale(0.9);
+  transform: translateY(-50%) scale(0.9);
 }
 
 .event-mention.is-added .em-add {
   background: var(--success);
   color: var(--success-ink);
   cursor: default;
+}
+
+.event-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  z-index: 20;
+  width: min(280px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid rgba(142, 144, 153, 0.35);
+  border-radius: 12px;
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 6px);
+  transition: opacity 0.18s, transform 0.18s;
+}
+
+.event-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  border-top-color: var(--surface-3);
+}
+
+.event-mention:hover .event-tooltip,
+.event-mention:focus-visible .event-tooltip,
+.event-mention:focus-within .event-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.tooltip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.tooltip-kicker,
+.tooltip-score,
+.tooltip-source {
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tooltip-score {
+  color: var(--tertiary);
+}
+
+.tooltip-title,
+.tooltip-meta,
+.tooltip-body,
+.tooltip-source {
+  display: block;
+}
+
+.tooltip-title {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.tooltip-meta {
+  margin-top: 5px;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.tooltip-body {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.tooltip-source {
+  margin-top: 8px;
+  color: var(--tertiary);
+  font-size: 10px;
+  text-transform: none;
 }
 
 .quick-prompts {

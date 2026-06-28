@@ -42,13 +42,36 @@ function scrollDown() {
 }
 
 function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) =>
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
   );
 }
 
+function eventTooltip(ev) {
+  if (!ev) return "";
+  const facets = Array.isArray(ev.matched_facets) ? ev.matched_facets.join(", ") : "";
+  const kicker = facets || ev.category || "Event";
+  const meta = [ev.date, ev.time, ev.location].filter(Boolean).join(" · ");
+  const body = ev.reason || ev.description || "";
+  const source = ev.source_query ? "Matched: " + ev.source_query : "";
+  return (
+    '<span class="event-tooltip" role="tooltip">' +
+    '<span class="tooltip-head">' +
+    '<span class="tooltip-kicker">' + escapeHtml(kicker) + "</span>" +
+    (ev.score != null ? '<span class="tooltip-score">score ' + escapeHtml(ev.score) + "</span>" : "") +
+    "</span>" +
+    '<span class="tooltip-title">' + escapeHtml(ev.title || "Event " + ev.event_id) + "</span>" +
+    (meta ? '<span class="tooltip-meta">' + escapeHtml(meta) + "</span>" : "") +
+    (body ? '<span class="tooltip-body">' + escapeHtml(body) + "</span>" : "") +
+    (source ? '<span class="tooltip-source">' + escapeHtml(source) + "</span>" : "") +
+    "</span>"
+  );
+}
+
 function mentionSpan(id, label) {
-  const staged = stagedHas(Number(id));
+  const eventId = Number(id);
+  const staged = stagedHas(eventId);
+  const ev = surfacedEvents.get(eventId);
   const tip = staged ? "Already in Editor's Choice" : "Add to Editor's Choice";
   return (
     '<span class="event-mention' + (staged ? " is-added" : "") +
@@ -61,6 +84,7 @@ function mentionSpan(id, label) {
     ' title="' + tip + '" aria-label="' + tip + '">' +
     (staged ? ICON_CHECK : ICON_ADD) +
     "</button>" +
+    eventTooltip(ev) +
     "</span>"
   );
 }
@@ -151,6 +175,11 @@ function setTools(view, names) {
   if (!names || !names.length) return;
   view.tools.hidden = false;
   view.tools.textContent = "ReAct tools: " + names.join(", ");
+  if (view.bubble.classList.contains("is-placeholder")) {
+    view.bubble.textContent = names.includes("day_analysis")
+      ? "Reading the day pattern..."
+      : "Gathering event evidence...";
+  }
 }
 
 function normalizeEvent(ev) {
