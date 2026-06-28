@@ -26,8 +26,12 @@ class ScriptedLLM:
     def __init__(self, replies):
         self.replies = list(replies)
         self.calls = 0
+        self.call_args = []
 
     def __call__(self, messages, tools=None, tool_choice="auto"):
+        self.call_args.append(
+            {"messages": messages, "tools": tools, "tool_choice": tool_choice}
+        )
         reply = self.replies[self.calls]
         self.calls += 1
         return reply
@@ -48,6 +52,7 @@ def _token_text(out):
 def repo(monkeypatch):
     event = {"id": 1, "title": "Odd ritual", "date": "2026-06-27", "time": "21:00:00",
              "category": "Kultur", "district": "Mitte", "location": "Square",
+             "description": "A late public ritual with unusual local context.",
              "lat": 52.5, "lon": 13.4}
     monkeypatch.setattr(events, "search", lambda **k: [event])
     monkeypatch.setattr(events, "by_ids", lambda ids: [event] if 1 in ids else [])
@@ -80,6 +85,7 @@ def test_discovery_registers_event_refs_then_propose_adds_reason(repo, monkeypat
     assert "propose" in names
     surfaced = [data for name, data in out if name == "event_refs"][0]
     assert surfaced["events"][0]["event_id"] == 1
+    assert surfaced["events"][0]["description"] == "A late public ritual with unusual local context."
     proposal = dict(out)["propose"]
     assert proposal["picks"] == [{"event_id": 1, "reason": "odd public ritual"}]
     assert proposal["events"][0]["event_id"] == 1
@@ -111,21 +117,24 @@ def test_empty_final_answer_gets_contextual_fallback(repo, monkeypatch):
     llm = ScriptedLLM([
         _assistant_tool("query_events", '{"keyword": "ritual"}'),
         _assistant_text(""),
+        _assistant_text("I would treat {{event:1}} as the useful match because its description gives unusual local context."),
     ])
     monkeypatch.setattr(nodes.deepseek, "chat", llm)
 
     out = _drain(build.stream_answer("t3", "find ritual events", budget=5))
     text = _token_text(out)
-    assert "I found a few possible matches" in text
+    assert "I would treat" in text
     assert "[[1|Odd ritual]]" in text
     assert "{{event:1}}" not in text
-    assert "fits because" in text
+    assert llm.call_args[-1]["tool_choice"] == "none"
+    assert llm.call_args[-1]["tools"] is None
 
 
 def test_non_event_final_answer_gets_contextual_fallback(repo, monkeypatch):
     llm = ScriptedLLM([
         _assistant_tool("query_events", '{"keyword": "ritual"}'),
         _assistant_text("Great, I found something. Let me also check for more."),
+        _assistant_text("{{event:1}} is the best match because the record describes an unusual local ritual."),
     ])
     monkeypatch.setattr(nodes.deepseek, "chat", llm)
 
@@ -133,7 +142,7 @@ def test_non_event_final_answer_gets_contextual_fallback(repo, monkeypatch):
     text = _token_text(out)
     assert "Let me also check" not in text
     assert "[[1|Odd ritual]]" in text
-    assert "fits because" in text
+    assert "unusual local ritual" in text
 
 
 def test_no_match_final_answer_is_not_forced_to_event_fallback(repo, monkeypatch):
@@ -149,6 +158,42 @@ def test_no_match_final_answer_is_not_forced_to_event_fallback(repo, monkeypatch
     assert "[[1|Odd ritual]]" not in text
 
 
+def test_contextual_fallback_uses_facet_signal(monkeypatch):
+    event = {
+        "id": 2,
+        "title": "Gaza solidarity gathering",
+        "date": "2026-06-27",
+        "time": "13:00:00",
+        "category": "action/protest/camp",
+        "district": "Friedrichshain",
+        "location": "Square",
+        "description": "Information about Gaza and Nahost solidarity.",
+        "lat": 52.5,
+        "lon": 13.4,
+    }
+    monkeypatch.setattr(events, "search", lambda **k: [event])
+    monkeypatch.setattr(events, "by_ids", lambda ids: [event] if 2 in ids else [])
+    monkeypatch.setattr(memory, "load_history", lambda thread_id: [])
+    monkeypatch.setattr(memory, "save_history", lambda thread_id, messages: None)
+
+    async def inline_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(build, "run_in_threadpool", inline_threadpool)
+    llm = ScriptedLLM([
+        _assistant_tool("query_events", '{"keyword": "Gaza"}'),
+        _assistant_text(""),
+        _assistant_text(""),
+    ])
+    monkeypatch.setattr(nodes.deepseek, "chat", llm)
+
+    out = _drain(build.stream_answer("t13", "middle east events", budget=5))
+    text = _token_text(out)
+    assert "[[2|Gaza solidarity gathering]]" in text
+    assert "strong Middle East match" in text
+    assert "tagged action/protest/camp" not in text
+
+
 def test_empty_final_answer_uses_proposal_reason(repo, monkeypatch):
     llm = ScriptedLLM([
         _assistant_tool(
@@ -156,6 +201,7 @@ def test_empty_final_answer_uses_proposal_reason(repo, monkeypatch):
             '{"picks": [{"event_id": 1, "reason": "strong local relevance"}]}',
         ),
         _assistant_text(""),
+        _assistant_text("Recommended {{event:1}} because it has strong local relevance."),
     ])
     monkeypatch.setattr(nodes.deepseek, "chat", llm)
 
