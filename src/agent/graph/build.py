@@ -18,17 +18,25 @@ _BUDGET_DONE = (
 )
 
 _TOOL_RESPONSE_NUDGE = (
-    "You have just used event tools and may have surfaced event cards in the UI. "
-    "Continue the conversation in natural language. If you want to recommend "
-    "Editor's Choice candidates, call propose_editors_choice with reasons first. "
-    "When you are ready to answer, mention each relevant event with {{event:id}} "
-    "using the event's actual id, and give a short reason for each. Do not end "
-    "the turn with only cards or tool output."
+    "You have just used event tools. Continue the conversation in natural "
+    "language, with event handles inside the prose, for example: "
+    "'This {{event:id}} is about ... and {{event:id}} is useful because ...'. "
+    "If you want to recommend Editor's Choice candidates, call "
+    "propose_editors_choice with reasons first. When you are ready to answer, "
+    "mention each relevant event with {{event:id}} using the event's actual id, "
+    "and give a short reason for each. Do not say you will check more unless you "
+    "are actually calling a tool. Do not end the turn with only cards or tool "
+    "output."
 )
 
 _EVENT_HANDLE_RE = re.compile(r"\{\{\s*event\s*:\s*(\d+)\s*\}\}")
 _EVENT_MARKER_RE = re.compile(r"\[\[(\d+)\|([^\]]*)\]\]")
 _PROTECTED_RE = re.compile(r"(\[\[\d+\|[^\]]*\]\]|`[^`]*`|https?://\S+)")
+_NO_MATCH_RE = re.compile(
+    r"\b(?:no|not)\b.{0,50}\b(?:relevant|matching|matches|events?)\b|"
+    r"\b(?:did not|could not|can't|cannot)\b.{0,50}\b(?:find|validate)\b",
+    re.IGNORECASE,
+)
 
 
 def _clean(text):
@@ -205,6 +213,14 @@ def _finalize_event_mentions(text, surfaced_events):
     return "".join(finalized)
 
 
+def _has_event_marker(text):
+    return bool(_EVENT_MARKER_RE.search(text or ""))
+
+
+def _says_no_match(text):
+    return bool(_NO_MATCH_RE.search(text or ""))
+
+
 def _fallback_reason(event):
     category = event.get("category")
     location = event.get("location")
@@ -228,12 +244,9 @@ def _fallback_answer(surfaced_events, proposed_reasons):
         )
 
     count = len(events)
-    header = (
-        f"I found {count} matching event card{'s' if count != 1 else ''}. "
-        "Here is the context I can give from the event data:"
-    )
+    header = "I found a few possible matches in the event data."
     lines = [header]
-    for index, event in enumerate(events[:5], start=1):
+    for event in events[:5]:
         event_id = int(event["event_id"])
         meta = ", ".join(
             str(part)
@@ -241,11 +254,12 @@ def _fallback_answer(surfaced_events, proposed_reasons):
             if part
         )
         reason = proposed_reasons.get(event_id) or _fallback_reason(event)
-        suffix = f" — {meta}" if meta else ""
-        lines.append(f"{index}. {{{{event:{event_id}}}}}{suffix}. {reason}")
+        prefix = f"{{{{event:{event_id}}}}}"
+        context = f" ({meta})" if meta else ""
+        lines.append(f"{prefix}{context}. {reason}")
     if count > 5:
-        lines.append(f"There are {count - 5} more matching cards in the workspace.")
-    return "\n".join(lines)
+        lines.append(f"I found {count - 5} more possible matches as well.")
+    return " ".join(lines)
 
 
 _DAY_WINDOW_TOOLS = ("query_events", "semantic_search", "nearby_events")
@@ -286,10 +300,25 @@ async def _drive(state: AgentState, day=None):
         state.messages.append(assistant)
 
         if not tool_calls:
-            content = assistant.get("content") or ""
+            raw_content = assistant.get("content") or ""
+            content = raw_content
             if not content:
                 content = _fallback_answer(surfaced_events, proposed_reasons)
             content = _finalize_event_mentions(content, surfaced_events)
+            attempted_handle = bool(
+                _EVENT_HANDLE_RE.search(raw_content)
+                or _EVENT_MARKER_RE.search(raw_content)
+            )
+            if (
+                surfaced_events
+                and not _has_event_marker(content)
+                and not attempted_handle
+                and not _says_no_match(content)
+            ):
+                content = _finalize_event_mentions(
+                    _fallback_answer(surfaced_events, proposed_reasons),
+                    surfaced_events,
+                )
             assistant["content"] = content
             for chunk in _chunks(content):
                 yield "token", {"text": chunk}
@@ -316,11 +345,23 @@ async def _drive(state: AgentState, day=None):
                     result.get("events"), seen_event_ids, surfaced_events
                 )
                 if surfaced:
-                    yield "events", {"events": surfaced}
+                    yield "event_refs", {"events": surfaced}
                 if name == "propose_editors_choice":
                     for pick in result["picks"]:
                         proposed_reasons[int(pick["event_id"])] = pick["reason"]
-                    yield "propose", {"picks": result["picks"]}
+                    proposed = []
+                    for event in result.get("events") or []:
+                        payload = _event_payload(event)
+                        event_id = int(payload["event_id"])
+                        reason = proposed_reasons.get(event_id)
+                        if reason:
+                            payload["reason"] = reason
+                            surfaced_events[event_id] = {
+                                **surfaced_events.get(event_id, {}),
+                                **payload,
+                            }
+                        proposed.append(payload)
+                    yield "propose", {"picks": result["picks"], "events": proposed}
 
             yield "status", {"tools_used": state.tools_used}
 

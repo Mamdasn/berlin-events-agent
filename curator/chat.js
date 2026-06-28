@@ -205,23 +205,30 @@ function createSurfaceCard(ev) {
   return card;
 }
 
-function renderSurfaceEvents(view, events) {
-  const target = view.events;
-  if (!target) return;
+function storeSurfaceEvents(events) {
+  const stored = [];
   (events || []).forEach((raw) => {
     const ev = normalizeEvent(raw);
     if (!ev) return;
     const existing = surfacedEvents.get(ev.event_id) || {};
     const merged = { ...existing, ...ev, reason: ev.reason || existing.reason || null };
     surfacedEvents.set(ev.event_id, merged);
+    stored.push(merged);
+  });
+  return stored;
+}
 
+function renderSurfaceEvents(view, events) {
+  const target = view.events;
+  if (!target) return;
+  storeSurfaceEvents(events).forEach((ev) => {
     let card = surfacedCards.get(ev.event_id);
     if (!card) {
-      card = createSurfaceCard(merged);
+      card = createSurfaceCard(ev);
       surfacedCards.set(ev.event_id, card);
       target.appendChild(card);
     } else {
-      updateSurfaceCard(card, merged);
+      updateSurfaceCard(card, ev);
     }
   });
   target.hidden = !target.children.length;
@@ -229,7 +236,7 @@ function renderSurfaceEvents(view, events) {
 }
 
 function applyRecommendations(view, payload) {
-  if (payload.events) renderSurfaceEvents(view, payload.events);
+  if (payload.events) storeSurfaceEvents(payload.events);
   (payload.picks || []).forEach((pick) => {
     const eventId = Number(pick.event_id);
     if (!Number.isFinite(eventId)) return;
@@ -243,7 +250,6 @@ function applyRecommendations(view, payload) {
       reason: (pick.reason || existing.reason || "").trim() || null,
     };
     surfacedEvents.set(eventId, ev);
-    if (!surfacedCards.has(eventId)) renderSurfaceEvents(view, [ev]);
     const card = surfacedCards.get(eventId);
     if (card) updateSurfaceCard(card, ev);
 
@@ -352,6 +358,8 @@ function handleEvent(chunk, view) {
     scrollDown();
   } else if (name === "status") {
     setTools(view, payload.tools_used);
+  } else if (name === "event_refs") {
+    storeSurfaceEvents(payload.events || []);
   } else if (name === "events") {
     renderSurfaceEvents(view, payload.events || []);
   } else if (name === "propose") {

@@ -61,7 +61,7 @@ def repo(monkeypatch):
     return event
 
 
-def test_discovery_surfaces_events_then_propose_adds_reason(repo, monkeypatch):
+def test_discovery_registers_event_refs_then_propose_adds_reason(repo, monkeypatch):
     llm = ScriptedLLM([
         _assistant_tool("query_events", '{"keyword": "ritual"}'),
         _assistant_tool(
@@ -75,12 +75,15 @@ def test_discovery_surfaces_events_then_propose_adds_reason(repo, monkeypatch):
 
     out = _drain(build.stream_answer("t1", "find something weird", budget=5))
     names = [n for n, _ in out]
-    assert names.count("events") == 1
+    assert names.count("event_refs") == 1
+    assert "events" not in names
     assert "propose" in names
-    surfaced = [data for name, data in out if name == "events"][0]
+    surfaced = [data for name, data in out if name == "event_refs"][0]
     assert surfaced["events"][0]["event_id"] == 1
     proposal = dict(out)["propose"]
     assert proposal["picks"] == [{"event_id": 1, "reason": "odd public ritual"}]
+    assert proposal["events"][0]["event_id"] == 1
+    assert proposal["events"][0]["reason"] == "odd public ritual"
     text = _token_text(out)
     assert text == "I would start with [[1|Odd ritual]]."
 
@@ -96,11 +99,11 @@ def test_direct_propose_surfaces_event_for_action(repo, monkeypatch):
     monkeypatch.setattr(nodes.deepseek, "chat", llm)
 
     out = _drain(build.stream_answer("t2", "recommend event 1", budget=5))
-    assert [name for name, _ in out if name in ("events", "propose")] == [
-        "events",
+    assert [name for name, _ in out if name in ("event_refs", "events", "propose")] == [
+        "event_refs",
         "propose",
     ]
-    assert dict(out)["events"]["events"][0]["title"] == "Odd ritual"
+    assert dict(out)["event_refs"]["events"][0]["title"] == "Odd ritual"
     assert _token_text(out) == "Recommended [[1|Odd ritual]]."
 
 
@@ -113,10 +116,37 @@ def test_empty_final_answer_gets_contextual_fallback(repo, monkeypatch):
 
     out = _drain(build.stream_answer("t3", "find ritual events", budget=5))
     text = _token_text(out)
-    assert "I found 1 matching event card" in text
+    assert "I found a few possible matches" in text
     assert "[[1|Odd ritual]]" in text
     assert "{{event:1}}" not in text
     assert "fits because" in text
+
+
+def test_non_event_final_answer_gets_contextual_fallback(repo, monkeypatch):
+    llm = ScriptedLLM([
+        _assistant_tool("query_events", '{"keyword": "ritual"}'),
+        _assistant_text("Great, I found something. Let me also check for more."),
+    ])
+    monkeypatch.setattr(nodes.deepseek, "chat", llm)
+
+    out = _drain(build.stream_answer("t11", "find ritual events", budget=5))
+    text = _token_text(out)
+    assert "Let me also check" not in text
+    assert "[[1|Odd ritual]]" in text
+    assert "fits because" in text
+
+
+def test_no_match_final_answer_is_not_forced_to_event_fallback(repo, monkeypatch):
+    llm = ScriptedLLM([
+        _assistant_tool("query_events", '{"keyword": "ritual"}'),
+        _assistant_text("I did not find a relevant match for that request."),
+    ])
+    monkeypatch.setattr(nodes.deepseek, "chat", llm)
+
+    out = _drain(build.stream_answer("t12", "find ritual events", budget=5))
+    text = _token_text(out)
+    assert text == "I did not find a relevant match for that request."
+    assert "[[1|Odd ritual]]" not in text
 
 
 def test_empty_final_answer_uses_proposal_reason(repo, monkeypatch):
