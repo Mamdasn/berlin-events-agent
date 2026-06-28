@@ -248,7 +248,21 @@ def _fallback_answer(surfaced_events, proposed_reasons):
     return "\n".join(lines)
 
 
-async def _drive(state: AgentState):
+_DAY_WINDOW_TOOLS = ("query_events", "semantic_search", "nearby_events")
+
+
+def _clamp_to_day(name, args, day):
+    if not day or not isinstance(args, dict):
+        return args
+    if name in _DAY_WINDOW_TOOLS:
+        args["date_from"] = day
+        args["date_to"] = day
+    elif name == "day_analysis":
+        args["date"] = day
+    return args
+
+
+async def _drive(state: AgentState, day=None):
     nudged = False
     seen_event_ids = set()
     surfaced_events = {}
@@ -289,6 +303,7 @@ async def _drive(state: AgentState):
                 state.messages.append(nodes.tool_message(tc["id"], {"error": parse_err}))
                 continue
 
+            args = _clamp_to_day(name, args, day)
             result, tool_err = await run_in_threadpool(nodes.run_tool, name, args)
             state.used_tool(name)
 
@@ -313,17 +328,17 @@ async def _drive(state: AgentState):
             state.messages.append({"role": "system", "content": _TOOL_RESPONSE_NUDGE})
 
 
-async def stream_answer(thread_id, message, budget):
+async def stream_answer(thread_id, message, budget, date=None):
     text = guardrails.sanitize_user_message(message)
     if not text:
         yield "error", {"message": "Empty message."}
         return
     history = await run_in_threadpool(memory.load_history, thread_id)
     messages = (
-        [{"role": "system", "content": guardrails.system_prompt()}]
+        [{"role": "system", "content": guardrails.system_prompt(active_date=date)}]
         + history
         + [{"role": "user", "content": text}]
     )
     state = AgentState(thread_id, messages, [], budget)
-    async for event in _drive(state):
+    async for event in _drive(state, date):
         yield event

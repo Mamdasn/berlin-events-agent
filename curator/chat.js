@@ -14,10 +14,18 @@ const mobileFeaturedCount = document.getElementById("mobile-featured-count");
 const featuredStatus = document.getElementById("featured-status");
 const sidebarOverlay = document.getElementById("sidebar-overlay");
 const successSnackbar = document.getElementById("success-snackbar");
+const workDate = document.getElementById("work-date");
+
+function todayISO() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60000;
+  return new Date(now - offset).toISOString().slice(0, 10);
+}
 
 let threadId = null;
 let streaming = false;
 let snackbarTimer = null;
+let selectedDate = todayISO();
 const surfacedEvents = new Map();
 const surfacedCards = new Map();
 
@@ -390,7 +398,7 @@ async function send(url, body) {
 }
 
 function ask(text) {
-  send("ask/stream", { message: text, thread_id: threadId });
+  send("ask/stream", { message: text, thread_id: threadId, date: selectedDate });
 }
 
 form.addEventListener("submit", (e) => {
@@ -424,12 +432,17 @@ function setDirty(v) {
   if (featuredStatus) featuredStatus.textContent = v ? "Pending apply" : "Synced";
 }
 
+function dayPicks() {
+  return [...desired.values()].filter((item) => item.date === selectedDate);
+}
+
 function updateFeaturedCount() {
-  const count = String(desired.size);
+  const dayCount = dayPicks().length;
+  const count = String(dayCount);
   if (featuredCount) featuredCount.textContent = count;
   if (mobileFeaturedCount) {
     mobileFeaturedCount.textContent = count;
-    mobileFeaturedCount.hidden = desired.size === 0;
+    mobileFeaturedCount.hidden = dayCount === 0;
   }
 }
 
@@ -496,14 +509,15 @@ function stageRemove(eventId) {
 function renderFeatured() {
   featuredList.textContent = "";
   updateFeaturedCount();
-  if (!desired.size) {
+  const picks = dayPicks();
+  if (!picks.length) {
     const empty = document.createElement("div");
     empty.className = "featured-empty";
-    empty.innerHTML = "<strong>Curated space is empty</strong><span>Use the plus bubble in the AI feed to pin candidate events here.</span>";
+    empty.innerHTML = "<strong>No picks for this day</strong><span>Use the plus bubble in the AI feed to pin candidate events for the selected day.</span>";
     featuredList.appendChild(empty);
     return;
   }
-  desired.forEach((item) => {
+  picks.forEach((item) => {
     const row = document.createElement("div");
     row.className = "featured-row";
 
@@ -622,6 +636,15 @@ document.querySelectorAll("[data-prompt]").forEach((button) => {
     ask(text);
   });
 });
+
+if (workDate) {
+  workDate.value = selectedDate;
+  workDate.min = todayISO();
+  workDate.addEventListener("change", () => {
+    selectedDate = workDate.value || todayISO();
+    renderFeatured();
+  });
+}
 
 loadFeatured().then(() => {
   if (window.matchMedia("(min-width: 901px)").matches) showFeatured();

@@ -214,3 +214,29 @@ def test_title_fallback_does_not_rewrite_inside_generated_marker():
 
 def test_resume_flow_removed():
     assert not hasattr(build, "stream_resume")
+
+
+def test_selected_day_clamps_tool_date_window(repo, monkeypatch):
+    seen = {}
+
+    def recording_search(**kwargs):
+        seen.update(kwargs)
+        return [repo]
+
+    monkeypatch.setattr(events, "search", recording_search)
+    llm = ScriptedLLM([
+        _assistant_tool("query_events", '{"date_from": "2026-01-01", "date_to": "2026-12-31"}'),
+        _assistant_text("Here is {{event:1}}."),
+    ])
+    monkeypatch.setattr(nodes.deepseek, "chat", llm)
+
+    _drain(build.stream_answer("t10", "what's on", budget=5, date="2026-06-27"))
+    assert seen["date_from"] == "2026-06-27"
+    assert seen["date_to"] == "2026-06-27"
+
+
+def test_clamp_helper_forces_day_analysis_date():
+    assert build._clamp_to_day("day_analysis", {"date": "2026-01-01"}, "2026-06-27") == {
+        "date": "2026-06-27"
+    }
+    assert build._clamp_to_day("query_events", {}, None) == {}

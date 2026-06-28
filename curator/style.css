@@ -215,6 +215,37 @@ button:disabled {
   white-space: nowrap;
 }
 
+.date-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--surface-4);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.date-control .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--primary);
+}
+
+.date-control input[type="date"] {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color-scheme: dark;
+  cursor: pointer;
+}
+
+.date-control input[type="date"]:focus {
+  outline: none;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;

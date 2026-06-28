@@ -2,6 +2,7 @@ import json
 import logging
 import secrets
 import time
+from datetime import date as _date
 from pathlib import Path
 
 import pyotp
@@ -124,7 +125,7 @@ def sse(event, data):
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-async def agent_events(thread_id, message):
+async def agent_events(thread_id, message, date=None):
     try:
         from agent.graph.build import stream_answer
     except Exception:
@@ -134,6 +135,7 @@ async def agent_events(thread_id, message):
         thread_id=thread_id,
         message=message,
         budget=config.AGENT_MAX_TOOL_CALLS,
+        date=date,
     ):
         yield name, data
 
@@ -249,11 +251,21 @@ async def logout(request: Request):
     return response
 
 
+def _valid_date(value):
+    if not value:
+        return None
+    try:
+        return _date.fromisoformat(str(value).strip()).isoformat()
+    except ValueError:
+        return None
+
+
 @app.post("/ask/stream")
 async def ask_stream(request: Request, sid: str = Depends(require_session)):
     body = await request.json()
     message = (body.get("message") or "").strip()
     thread_id = body.get("thread_id") or sid
+    date = _valid_date(body.get("date"))
 
     async def generate():
         if not message:
@@ -261,7 +273,7 @@ async def ask_stream(request: Request, sid: str = Depends(require_session)):
             yield sse("done", {"thread_id": thread_id})
             return
         try:
-            async for name, data in agent_events(thread_id, message):
+            async for name, data in agent_events(thread_id, message, date):
                 yield sse(name, data)
         except Exception:
             yield sse("error", {"message": "The agent failed mid-response."})
