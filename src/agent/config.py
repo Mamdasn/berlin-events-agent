@@ -14,6 +14,9 @@ class Config:
     SESSION_COOKIE = os.environ.get("SESSION_COOKIE", "ec_session")
     SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", "43200"))
     COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
+    LOGIN_MAX_FAILURES = int(os.environ.get("LOGIN_MAX_FAILURES", "8"))
+    LOGIN_LOCKOUT_SECONDS = int(os.environ.get("LOGIN_LOCKOUT_SECONDS", "900"))
+    LOGIN_FAILURE_WINDOW_SECONDS = int(os.environ.get("LOGIN_FAILURE_WINDOW_SECONDS", "900"))
 
     SECRET_STORE_PATH = os.environ.get("SECRET_STORE_PATH", "/app/data/secrets.json")
 

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import pyotp
 import pytest
@@ -48,6 +49,23 @@ def _init_serializer(monkeypatch, tmp_path):
     monkeypatch.delenv("COOKIE_SESSION_SECRET", raising=False)
     service._serializer = None
     service._redis = None
+    service._mem_login_failures.clear()
+    service._mem_login_locks.clear()
+
+
+class FakeRequest:
+    def __init__(self, body=None, headers=None, cookies=None, json_error=None):
+        self._body = body
+        self._json_error = json_error
+        self.headers = headers or {}
+        self.cookies = cookies or {}
+        self.url = SimpleNamespace(scheme="https", netloc="maps.farhadlabs.com")
+        self.client = SimpleNamespace(host="127.0.0.1")
+
+    async def json(self):
+        if self._json_error:
+            raise self._json_error
+        return self._body
 
 
 def test_session_roundtrip(tmp_path, monkeypatch):
@@ -108,6 +126,13 @@ def _route(path):
     return next(route for route in service.app.routes if getattr(route, "path", None) == path)
 
 
+def test_fastapi_docs_are_disabled():
+    paths = {getattr(route, "path", None) for route in service.app.routes}
+    assert "/docs" not in paths
+    assert "/redoc" not in paths
+    assert "/openapi.json" not in paths
+
+
 def test_curator_app_assets_require_session(tmp_path, monkeypatch):
     _init_serializer(monkeypatch, tmp_path)
 
@@ -134,3 +159,91 @@ def test_curator_app_assets_are_private_when_logged_in(tmp_path, monkeypatch):
 
     login_response = asyncio.run(service.login_css())
     assert "login.css" in str(login_response.path)
+
+
+def test_same_origin_rejects_wrong_origin():
+    request = FakeRequest(
+        headers={
+            "origin": "https://evil.example",
+            "host": "maps.farhadlabs.com",
+            "x-forwarded-proto": "https",
+        }
+    )
+    with pytest.raises(HTTPException) as exc:
+        service.require_same_origin(request)
+    assert exc.value.status_code == 403
+
+
+def test_same_origin_accepts_matching_origin():
+    request = FakeRequest(
+        headers={
+            "origin": "https://maps.farhadlabs.com",
+            "host": "maps.farhadlabs.com",
+            "x-forwarded-proto": "https",
+        }
+    )
+    service.require_same_origin(request)
+
+
+def test_editors_choice_rejects_bad_json(tmp_path, monkeypatch):
+    _init_serializer(monkeypatch, tmp_path)
+    request = FakeRequest(json_error=ValueError("bad json"))
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(service.editors_choice_set(request, sid="sid"))
+    assert exc.value.status_code == 400
+
+
+def test_editors_choice_rejects_invalid_items(tmp_path, monkeypatch):
+    _init_serializer(monkeypatch, tmp_path)
+    invalid_bodies = [
+        [],
+        {},
+        {"items": "bad"},
+        {"items": ["bad"]},
+        {"items": [{}]},
+        {"items": [{"event_id": "1.5"}]},
+        {"items": [{"event_id": 1, "note": 3}]},
+    ]
+    for body in invalid_bodies:
+        request = FakeRequest(body=body)
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(service.editors_choice_set(request, sid="sid"))
+        assert exc.value.status_code == 400
+
+
+def test_parse_editor_choice_accepts_empty_and_valid_items():
+    assert service.parse_editor_choice_items({"items": []}) == []
+    assert service.parse_editor_choice_items(
+        {"items": [{"event_id": "12", "note": "Worth a look", "extra": "ignored"}]}
+    ) == [{"event_id": 12, "note": "Worth a look"}]
+
+
+def test_login_lockout_in_memory(tmp_path, monkeypatch):
+    _init_serializer(monkeypatch, tmp_path)
+    monkeypatch.setattr(config, "LOGIN_MAX_FAILURES", 2)
+    monkeypatch.setattr(config, "LOGIN_LOCKOUT_SECONDS", 900)
+    monkeypatch.setattr(config, "LOGIN_FAILURE_WINDOW_SECONDS", 900)
+
+    ip = "203.0.113.10"
+    assert not service.login_is_locked(ip)
+    service.record_login_failure(ip)
+    assert not service.login_is_locked(ip)
+    service.record_login_failure(ip)
+    assert service.login_is_locked(ip)
+    service.clear_login_failures(ip)
+    assert not service.login_is_locked(ip)
+
+
+def test_login_rejects_wrong_origin_before_credentials(tmp_path, monkeypatch):
+    _init_serializer(monkeypatch, tmp_path)
+    request = FakeRequest(
+        body={"password": "anything"},
+        headers={
+            "origin": "https://evil.example",
+            "host": "maps.farhadlabs.com",
+            "x-forwarded-proto": "https",
+        },
+    )
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(service.login(request))
+    assert exc.value.status_code == 403
