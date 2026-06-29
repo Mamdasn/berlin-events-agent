@@ -33,7 +33,7 @@ def nearby_events(args: NearbyEventsArgs):
     lat, lon = args.lat, args.lon
     if args.event_id is not None:
         center = events.by_ids([args.event_id])
-        if not center or center[0]["lat"] is None:
+        if not center or center[0]["lat"] is None or center[0]["lon"] is None:
             raise ToolError(f"event {args.event_id} not found or has no location")
         lat, lon = center[0]["lat"], center[0]["lon"]
 

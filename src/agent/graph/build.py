@@ -23,14 +23,17 @@ _TOOL_RESPONSE_NUDGE = (
     "'This {{event:id}} is about ... and {{event:id}} is useful because ...'. "
     "If you want to recommend Editor's Choice candidates, call "
     "propose_editors_choice with reasons first. When you are ready to answer, "
-    "mention each relevant event with {{event:id}} using the event's actual id, "
-    "and give a short reason for each. Do not say you will check more unless you "
-    "are actually calling a tool. Do not end the turn with only cards or tool "
-    "output."
+    "mention every relevant event you found with {{event:id}} using the "
+    "event's actual id, and give a short reason for each; do not trim the "
+    "list to a few picks. Each handle renders as the event's full "
+    "title, so never write the title next to a handle. Do not say you will "
+    "check more unless you are actually calling a tool. Do not end the turn "
+    "with only cards or tool output."
 )
 
 _EVENT_HANDLE_RE = re.compile(r"\{\{\s*event\s*:\s*(\d+)\s*\}\}")
 _EVENT_MARKER_RE = re.compile(r"\[\[(\d+)\|([^\]]*)\]\]")
+_SAFE_MARKER_DUP_SEP_RE = re.compile(r"^[\W_]{0,32}$")
 _PROTECTED_RE = re.compile(r"(\[\[\d+\|[^\]]*\]\]|`[^`]*`|https?://\S+)")
 _NO_MATCH_RE = re.compile(
     r"\b(?:no|not)\b.{0,50}\b(?:relevant|matching|matches|events?)\b|"
@@ -45,7 +48,7 @@ _WEAK_FINAL_RE = re.compile(
     re.IGNORECASE,
 )
 _DESCRIPTION_LIMIT = 360
-_EVIDENCE_LIMIT = 8
+_EVIDENCE_LIMIT = 25
 _FACETS = {
     "middle_east": {
         "label": "Middle East",
@@ -215,6 +218,8 @@ def _source_query(name, args):
         return ", ".join(str(part) for part in parts)
     if name == "semantic_search":
         return args.get("query")
+    if name == "resolve_event_reference":
+        return args.get("text")
     if name == "nearby_events":
         return "nearby search"
     if name == "day_analysis":
@@ -269,8 +274,9 @@ def _event_payload(event, source_tool=None, source_args=None, intent_facets=None
     description = _snippet(event.get("description") or event.get("body"))
     if description:
         payload["description"] = description
-    if event.get("score") is not None:
-        payload["score"] = event.get("score")
+    for key in ("score", "distance_km", "match_score", "match_reason"):
+        if event.get(key) is not None:
+            payload[key] = event.get(key)
     if source_tool:
         payload["source_tool"] = source_tool
     query = _source_query(source_tool, source_args)
@@ -353,6 +359,16 @@ def _replace_known_ids(text, surfaced_events):
     return text
 
 
+_QUOTE_CHARS = "'\"‘’“”„‚‹›«»"
+_QUOTE_CLASS = "[" + re.escape(_QUOTE_CHARS) + "]"
+
+
+def _title_pattern(title):
+    return "".join(
+        _QUOTE_CLASS if ch in _QUOTE_CHARS else re.escape(ch) for ch in title
+    )
+
+
 def _replace_known_titles(text, surfaced_events):
     by_title = {}
     for event in surfaced_events.values():
@@ -363,9 +379,47 @@ def _replace_known_titles(text, surfaced_events):
         events = by_title[title]
         if len(events) != 1:
             continue
-        pattern = re.compile(rf"(?<!\w){re.escape(title)}(?!\w)")
+        pattern = re.compile(rf"(?<!\w){_title_pattern(title)}(?!\w)")
         text = pattern.sub(_marker(events[0]), text)
     return text
+
+
+def _skip_duplicate_closer(text, pos, between):
+    pairs = {'"': '"', "'": "'", "“": "”", "‘": "’", "„": "“", "‚": "‘",
+             "«": "»", "»": "«", "(": ")", "[": "]"}
+    while pos < len(text):
+        ch = text[pos]
+        if ch in "*_" and ch in between:
+            pos += 1
+        elif any(pairs.get(b) == ch for b in between):
+            pos += 1
+        else:
+            break
+    return pos
+
+
+def _dedupe_adjacent_event_markers(text):
+    matches = list(_EVENT_MARKER_RE.finditer(text or ""))
+    if len(matches) < 2:
+        return text
+
+    out = []
+    pos = 0
+    last_id = None
+    for match in matches:
+        event_id = int(match.group(1))
+        between = text[pos : match.start()]
+        if (
+            last_id == event_id
+            and _SAFE_MARKER_DUP_SEP_RE.fullmatch(between)
+        ):
+            pos = _skip_duplicate_closer(text, match.end(), between)
+            continue
+        out.append(text[pos : match.end()])
+        pos = match.end()
+        last_id = event_id
+    out.append(text[pos:])
+    return "".join(out)
 
 
 def _finalize_event_mentions(text, surfaced_events):
@@ -389,7 +443,23 @@ def _finalize_event_mentions(text, surfaced_events):
             else:
                 id_finalized.append(_replace_known_ids(id_segment, surfaced_events))
         finalized.append("".join(id_finalized))
-    return "".join(finalized)
+    return _drop_quoted_title_echoes(
+        _dedupe_adjacent_event_markers("".join(finalized))
+    )
+
+
+_QUOTED_ECHO_RE = re.compile(
+    r"(\[\[(\d+)\|[^\]]*\]\][^\[\]\n]{0,100}?)[ \t]*[–—:-]?[ \t]*"
+    r"[\"'“”„‚‹›«»]\[\[\2\|[^\]]*\]\][\"'“”„‚‹›«»]?"
+)
+
+
+def _drop_quoted_title_echoes(text):
+    while True:
+        replaced = _QUOTED_ECHO_RE.sub(r"\1", text)
+        if replaced == text:
+            return replaced
+        text = replaced
 
 
 def _has_event_marker(text):
@@ -487,7 +557,8 @@ def _fallback_answer(surfaced_events, proposed_reasons, intent_facets=None):
     count = len(events)
     header = "I found some possible matches, with different confidence levels."
     lines = [header]
-    for event in events[:5]:
+    shown = events[:_EVIDENCE_LIMIT]
+    for event in shown:
         event_id = int(event["event_id"])
         meta = ", ".join(
             str(part)
@@ -498,8 +569,8 @@ def _fallback_answer(surfaced_events, proposed_reasons, intent_facets=None):
         prefix = f"{{{{event:{event_id}}}}}"
         context = f" ({meta})" if meta else ""
         lines.append(f"{prefix}{context}. {reason}")
-    if count > 5:
-        lines.append(f"I found {count - 5} more lower-priority matches as well.")
+    if count > len(shown):
+        lines.append(f"I found {count - len(shown)} more lower-priority matches as well.")
     return " ".join(lines)
 
 
@@ -519,7 +590,16 @@ def _evidence_items(surfaced_events, proposed_reasons, intent_facets):
             "match_terms": event.get("match_terms") or {},
             "rank_score": event.get("rank_score") or 0,
         }
-        for key in ("description", "source_tool", "source_query", "score", "reason"):
+        for key in (
+            "description",
+            "source_tool",
+            "source_query",
+            "score",
+            "distance_km",
+            "match_score",
+            "match_reason",
+            "reason",
+        ):
             if event.get(key) is not None:
                 item[key] = event.get(key)
         items.append(item)
@@ -534,9 +614,11 @@ def _synthesis_prompt(user_text, day, surfaced_events, proposed_reasons,
         "Write the final curator answer now. Do not call tools.\n"
         "Stay neutral, but be editorially useful: separate strong matches from "
         "loose matches and explain the signal in the event title, category, "
-        "location, or description. Mention only events you can justify from the "
+        "location, or description. Cover every evidence event that fits the "
+        "request, strongest first; mention only events you can justify from the "
         "evidence. Use inline handles like {{event:123}} for every event you "
-        "name. Do not write raw event titles yourself.\n\n"
+        "name. Handles render as full event titles, so never write a raw event "
+        "title yourself or next to a handle.\n\n"
         f"Editor request: {user_text}\n"
         f"Active date: {day or 'not fixed'}\n"
         f"Requested facets: {', '.join(facet_labels) if facet_labels else 'not explicit'}\n"
@@ -546,7 +628,12 @@ def _synthesis_prompt(user_text, day, surfaced_events, proposed_reasons,
     )
 
 
-_DAY_WINDOW_TOOLS = ("query_events", "semantic_search", "nearby_events")
+_DAY_WINDOW_TOOLS = (
+    "query_events",
+    "resolve_event_reference",
+    "semantic_search",
+    "nearby_events",
+)
 
 
 def _clamp_to_day(name, args, day):
