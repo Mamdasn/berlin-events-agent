@@ -685,10 +685,10 @@ button:disabled {
 }
 
 .event-tooltip {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 10px);
-  z-index: 20;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 3000;
   width: min(280px, calc(100vw - 32px));
   padding: 12px;
   border: 1px solid rgba(142, 144, 153, 0.35);
@@ -698,7 +698,7 @@ button:disabled {
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.45);
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, 6px);
+  transform: translateY(6px);
   transition: opacity 0.18s, transform 0.18s;
 }
 
@@ -712,11 +712,16 @@ button:disabled {
   border-top-color: var(--surface-3);
 }
 
-.event-mention:hover .event-tooltip,
-.event-mention:focus-visible .event-tooltip,
-.event-mention:focus-within .event-tooltip {
+.event-tooltip.is-visible {
   opacity: 1;
-  transform: translate(-50%, 0);
+  transform: translateY(0);
+}
+
+.event-tooltip.is-below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--surface-3);
 }
 
 .tooltip-head {

@@ -201,7 +201,7 @@ def main():
     elapsed_ms = (time.perf_counter() - start) * 1000
     passed = len(cases) - len(failures)
     print()
-    print(f"task_success={passed}/{len(cases)} latency_ms={elapsed_ms:.1f} token_cost_usd=0.00")
+    print(f"task_success={passed}/{len(cases)} latency_ms={elapsed_ms:.1f}")
     if failures:
         print(json.dumps({"failures": failures}, indent=2, ensure_ascii=False))
         return 1
