@@ -32,6 +32,11 @@ const surfacedCards = new Map();
 const ICON_ADD = '<span class="material-symbols-outlined">add</span>';
 const ICON_CHECK = '<span class="material-symbols-outlined">check</span>';
 const ICON_REMOVE = '<span class="material-symbols-outlined">remove</span>';
+const eventTooltipEl = document.createElement("span");
+eventTooltipEl.className = "event-tooltip";
+eventTooltipEl.setAttribute("role", "tooltip");
+eventTooltipEl.hidden = true;
+document.body.appendChild(eventTooltipEl);
 
 function tmpl(id) {
   return document.getElementById(id).content.firstElementChild.cloneNode(true);
@@ -47,7 +52,7 @@ function escapeHtml(s) {
   );
 }
 
-function eventTooltip(ev) {
+function eventTooltipHtml(ev) {
   if (!ev) return "";
   const facets = Array.isArray(ev.matched_facets) ? ev.matched_facets.join(", ") : "";
   const kicker = facets || ev.category || "Event";
@@ -55,7 +60,6 @@ function eventTooltip(ev) {
   const body = ev.reason || ev.description || "";
   const source = ev.source_query ? "Matched: " + ev.source_query : "";
   return (
-    '<span class="event-tooltip" role="tooltip">' +
     '<span class="tooltip-head">' +
     '<span class="tooltip-kicker">' + escapeHtml(kicker) + "</span>" +
     (ev.score != null ? '<span class="tooltip-score">score ' + escapeHtml(ev.score) + "</span>" : "") +
@@ -63,15 +67,13 @@ function eventTooltip(ev) {
     '<span class="tooltip-title">' + escapeHtml(ev.title || "Event " + ev.event_id) + "</span>" +
     (meta ? '<span class="tooltip-meta">' + escapeHtml(meta) + "</span>" : "") +
     (body ? '<span class="tooltip-body">' + escapeHtml(body) + "</span>" : "") +
-    (source ? '<span class="tooltip-source">' + escapeHtml(source) + "</span>" : "") +
-    "</span>"
+    (source ? '<span class="tooltip-source">' + escapeHtml(source) + "</span>" : "")
   );
 }
 
 function mentionSpan(id, label) {
   const eventId = Number(id);
   const staged = stagedHas(eventId);
-  const ev = surfacedEvents.get(eventId);
   const tip = staged ? "Already in Editor's Choice" : "Add to Editor's Choice";
   return (
     '<span class="event-mention' + (staged ? " is-added" : "") +
@@ -84,7 +86,6 @@ function mentionSpan(id, label) {
     ' title="' + tip + '" aria-label="' + tip + '">' +
     (staged ? ICON_CHECK : ICON_ADD) +
     "</button>" +
-    eventTooltip(ev) +
     "</span>"
   );
 }
@@ -331,10 +332,39 @@ function linkMentionCard(eventId, on) {
     .forEach((card) => card.classList.toggle("is-linked", on));
 }
 
+function hideEventTooltip() {
+  eventTooltipEl.hidden = true;
+  eventTooltipEl.classList.remove("is-visible", "is-below");
+}
+
+function showEventTooltip(mention) {
+  const eventId = Number(mention.dataset.eventId);
+  const ev = surfacedEvents.get(eventId);
+  if (!ev) {
+    hideEventTooltip();
+    return;
+  }
+  eventTooltipEl.innerHTML = eventTooltipHtml(ev);
+  eventTooltipEl.hidden = false;
+  eventTooltipEl.classList.add("is-visible");
+  eventTooltipEl.classList.remove("is-below");
+  const rect = mention.getBoundingClientRect();
+  const tip = eventTooltipEl.getBoundingClientRect();
+  const left = Math.max(8, Math.min(window.innerWidth - tip.width - 8, rect.left + rect.width / 2 - tip.width / 2));
+  let top = rect.top - tip.height - 10;
+  if (top < 8) {
+    top = rect.bottom + 10;
+    eventTooltipEl.classList.add("is-below");
+  }
+  eventTooltipEl.style.left = left + "px";
+  eventTooltipEl.style.top = top + "px";
+}
+
 messages.addEventListener("mouseover", (e) => {
   const mention = e.target.closest(".event-mention");
   if (mention && !mention.contains(e.relatedTarget)) {
     linkMentionCard(mention.dataset.eventId, true);
+    showEventTooltip(mention);
   }
 });
 
@@ -342,8 +372,28 @@ messages.addEventListener("mouseout", (e) => {
   const mention = e.target.closest(".event-mention");
   if (mention && !mention.contains(e.relatedTarget)) {
     linkMentionCard(mention.dataset.eventId, false);
+    hideEventTooltip();
   }
 });
+
+messages.addEventListener("focusin", (e) => {
+  const mention = e.target.closest(".event-mention");
+  if (mention) {
+    linkMentionCard(mention.dataset.eventId, true);
+    showEventTooltip(mention);
+  }
+});
+
+messages.addEventListener("focusout", (e) => {
+  const mention = e.target.closest(".event-mention");
+  if (mention && !mention.contains(e.relatedTarget)) {
+    linkMentionCard(mention.dataset.eventId, false);
+    hideEventTooltip();
+  }
+});
+
+window.addEventListener("resize", hideEventTooltip);
+window.addEventListener("scroll", hideEventTooltip, true);
 
 async function readStream(res, view) {
   const reader = res.body.getReader();
