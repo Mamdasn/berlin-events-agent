@@ -398,6 +398,7 @@ async def ask_stream(request: Request, sid: str = Depends(require_session)):
             async for name, data in agent_events(thread_id, message, date):
                 yield sse(name, data)
         except Exception:
+            log.exception("agent stream failed")
             yield sse("error", {"message": "The agent failed mid-response."})
         yield sse("done", {"thread_id": thread_id})
 

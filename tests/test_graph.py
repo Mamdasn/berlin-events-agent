@@ -4,7 +4,7 @@ import pytest
 
 from agent.db.repository import events
 from agent import memory
-from agent.graph import build, nodes
+from agent.graph import build, guardrails, nodes
 
 
 def _assistant_tool(name, arguments="{}", call_id="c1"):
@@ -288,6 +288,39 @@ def test_title_fallback_does_not_rewrite_inside_generated_marker():
     assert text == "[[1|id 1 gathering]] fits."
 
 
+def test_handle_plus_raw_title_collapses_duplicate_marker():
+    surfaced = {1: {"event_id": 1, "title": "Odd ritual"}}
+    text = build._finalize_event_mentions("{{event:1}} — Odd ritual, 21:00", surfaced)
+    assert text == "[[1|Odd ritual]], 21:00"
+
+
+def test_quoted_duplicate_marker_collapses():
+    surfaced = {1: {"event_id": 1, "title": "Odd ritual"}}
+    text = build._finalize_event_mentions('[[1|Wrong]] "[[1|Odd ritual]]"', surfaced)
+    assert text == "[[1|Odd ritual]]"
+
+
+def test_duplicate_marker_with_real_prose_stays():
+    surfaced = {1: {"event_id": 1, "title": "Odd ritual"}}
+    text = build._finalize_event_mentions(
+        "{{event:1}} is strong. {{event:1}} also has useful timing.",
+        surfaced,
+    )
+    assert text == (
+        "[[1|Odd ritual]] is strong. "
+        "[[1|Odd ritual]] also has useful timing."
+    )
+
+
+def test_different_event_markers_do_not_collapse():
+    surfaced = {
+        1: {"event_id": 1, "title": "Odd ritual"},
+        2: {"event_id": 2, "title": "Another event"},
+    }
+    text = build._finalize_event_mentions("{{event:1}} — {{event:2}}", surfaced)
+    assert text == "[[1|Odd ritual]] — [[2|Another event]]"
+
+
 def test_resume_flow_removed():
     assert not hasattr(build, "stream_resume")
 
@@ -311,8 +344,70 @@ def test_selected_day_clamps_tool_date_window(repo, monkeypatch):
     assert seen["date_to"] == "2026-06-27"
 
 
+def test_resolver_to_nearby_flow_surfaces_both_events(monkeypatch):
+    center = {"id": 1, "title": "Odd ritual", "date": "2026-06-27", "time": "21:00:00",
+              "category": "Kultur", "district": "Mitte", "location": "Square",
+              "description": "A late public ritual.", "lat": 52.5, "lon": 13.4}
+    nearby = {"id": 2, "title": "Nearby talk", "date": "2026-06-27", "time": "22:00:00",
+              "category": "Talk", "district": "Mitte", "location": "Hall",
+              "description": "Close by.", "lat": 52.501, "lon": 13.401,
+              "distance_km": 0.2}
+    by_id = {1: center, 2: nearby}
+    monkeypatch.setattr(events, "on_date", lambda date, limit=2000: [center, nearby])
+    monkeypatch.setattr(events, "search", lambda **k: [center, nearby])
+    monkeypatch.setattr(events, "by_ids", lambda ids: [by_id[i] for i in ids if i in by_id])
+    monkeypatch.setattr(events, "nearby", lambda **k: [nearby])
+    monkeypatch.setattr(memory, "load_history", lambda thread_id: [])
+    monkeypatch.setattr(memory, "save_history", lambda thread_id, messages: None)
+
+    async def inline_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(build, "run_in_threadpool", inline_threadpool)
+    llm = ScriptedLLM([
+        _assistant_tool("resolve_event_reference", '{"text": "Odd ritual"}'),
+        _assistant_tool("nearby_events", '{"event_id": 1}', "c2"),
+        _assistant_text("Near {{event:1}}, {{event:2}} is close by."),
+    ])
+    monkeypatch.setattr(nodes.deepseek, "chat", llm)
+
+    out = _drain(
+        build.stream_answer(
+            "nearby",
+            "what is near this event: Odd ritual",
+            budget=5,
+            date="2026-06-27",
+        )
+    )
+    refs = [data for name, data in out if name == "event_refs"]
+    assert refs[0]["events"][0]["event_id"] == 1
+    assert refs[1]["events"][0]["event_id"] == 2
+    assert _token_text(out) == (
+        "Near [[1|Odd ritual]], [[2|Nearby talk]] is close by."
+    )
+
+
 def test_clamp_helper_forces_day_analysis_date():
     assert build._clamp_to_day("day_analysis", {"date": "2026-01-01"}, "2026-06-27") == {
         "date": "2026-06-27"
     }
     assert build._clamp_to_day("query_events", {}, None) == {}
+
+
+def test_clamp_helper_forces_resolver_date_window():
+    assert build._clamp_to_day(
+        "resolve_event_reference",
+        {"text": "Odd ritual", "date_from": "2026-01-01"},
+        "2026-06-27",
+    ) == {
+        "text": "Odd ritual",
+        "date_from": "2026-06-27",
+        "date_to": "2026-06-27",
+    }
+
+
+def test_prompt_explains_nearby_is_not_near_me():
+    prompt = guardrails.system_prompt(active_date="2026-06-27")
+    assert "does not provide the editor's browser location" in prompt
+    assert "Do not treat nearby_events as 'near me'" in prompt
+    assert "resolve_event_reference" in prompt

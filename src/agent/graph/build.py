@@ -31,6 +31,7 @@ _TOOL_RESPONSE_NUDGE = (
 
 _EVENT_HANDLE_RE = re.compile(r"\{\{\s*event\s*:\s*(\d+)\s*\}\}")
 _EVENT_MARKER_RE = re.compile(r"\[\[(\d+)\|([^\]]*)\]\]")
+_SAFE_MARKER_DUP_SEP_RE = re.compile(r"^[\s\"'“”‘’()\[\],.:;–—-]{0,32}$")
 _PROTECTED_RE = re.compile(r"(\[\[\d+\|[^\]]*\]\]|`[^`]*`|https?://\S+)")
 _NO_MATCH_RE = re.compile(
     r"\b(?:no|not)\b.{0,50}\b(?:relevant|matching|matches|events?)\b|"
@@ -215,6 +216,8 @@ def _source_query(name, args):
         return ", ".join(str(part) for part in parts)
     if name == "semantic_search":
         return args.get("query")
+    if name == "resolve_event_reference":
+        return args.get("text")
     if name == "nearby_events":
         return "nearby search"
     if name == "day_analysis":
@@ -269,8 +272,9 @@ def _event_payload(event, source_tool=None, source_args=None, intent_facets=None
     description = _snippet(event.get("description") or event.get("body"))
     if description:
         payload["description"] = description
-    if event.get("score") is not None:
-        payload["score"] = event.get("score")
+    for key in ("score", "distance_km", "match_score", "match_reason"):
+        if event.get(key) is not None:
+            payload[key] = event.get(key)
     if source_tool:
         payload["source_tool"] = source_tool
     query = _source_query(source_tool, source_args)
@@ -368,6 +372,40 @@ def _replace_known_titles(text, surfaced_events):
     return text
 
 
+def _skip_duplicate_closer(text, pos, between):
+    if pos >= len(text):
+        return pos
+    closer = text[pos]
+    pairs = {'"': '"', "'": "'", "“": "”", "‘": "’", "(": ")", "[": "]"}
+    if any(pairs.get(ch) == closer for ch in between):
+        return pos + 1
+    return pos
+
+
+def _dedupe_adjacent_event_markers(text):
+    matches = list(_EVENT_MARKER_RE.finditer(text or ""))
+    if len(matches) < 2:
+        return text
+
+    out = []
+    pos = 0
+    last_id = None
+    for match in matches:
+        event_id = int(match.group(1))
+        between = text[pos : match.start()]
+        if (
+            last_id == event_id
+            and _SAFE_MARKER_DUP_SEP_RE.fullmatch(between)
+        ):
+            pos = _skip_duplicate_closer(text, match.end(), between)
+            continue
+        out.append(text[pos : match.end()])
+        pos = match.end()
+        last_id = event_id
+    out.append(text[pos:])
+    return "".join(out)
+
+
 def _finalize_event_mentions(text, surfaced_events):
     if not text:
         return text
@@ -389,7 +427,7 @@ def _finalize_event_mentions(text, surfaced_events):
             else:
                 id_finalized.append(_replace_known_ids(id_segment, surfaced_events))
         finalized.append("".join(id_finalized))
-    return "".join(finalized)
+    return _dedupe_adjacent_event_markers("".join(finalized))
 
 
 def _has_event_marker(text):
@@ -519,7 +557,16 @@ def _evidence_items(surfaced_events, proposed_reasons, intent_facets):
             "match_terms": event.get("match_terms") or {},
             "rank_score": event.get("rank_score") or 0,
         }
-        for key in ("description", "source_tool", "source_query", "score", "reason"):
+        for key in (
+            "description",
+            "source_tool",
+            "source_query",
+            "score",
+            "distance_km",
+            "match_score",
+            "match_reason",
+            "reason",
+        ):
             if event.get(key) is not None:
                 item[key] = event.get(key)
         items.append(item)
@@ -546,7 +593,12 @@ def _synthesis_prompt(user_text, day, surfaced_events, proposed_reasons,
     )
 
 
-_DAY_WINDOW_TOOLS = ("query_events", "semantic_search", "nearby_events")
+_DAY_WINDOW_TOOLS = (
+    "query_events",
+    "resolve_event_reference",
+    "semantic_search",
+    "nearby_events",
+)
 
 
 def _clamp_to_day(name, args, day):
