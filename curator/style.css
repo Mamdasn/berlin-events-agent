@@ -836,6 +836,7 @@ button:disabled {
   place-items: center;
   width: 28px;
   height: 28px;
+  margin-bottom: 6px;
   border-radius: 999px;
   background: var(--surface-4);
   color: var(--primary);
