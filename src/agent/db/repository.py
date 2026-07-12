@@ -7,7 +7,7 @@ _BASE_SELECT = """
     SELECT e.id, e.datum, e.von, e.bis, e.thema, e.category,
            e.description, e.source, l.name AS location, l.district,
            l.lat, l.lon
-    FROM events e
+    FROM visible_events e
     JOIN locations l ON l.id = e.location_id
 """
 
@@ -131,7 +131,7 @@ class EventRepository:
 
     def count(self):
         rows = self.db.query(
-            "SELECT count(*) AS n FROM events e "
+            "SELECT count(*) AS n FROM visible_events e "
             "JOIN locations l ON l.id = e.location_id WHERE l.lat IS NOT NULL"
         )
         return int(rows[0]["n"])
@@ -140,7 +140,7 @@ class EventRepository:
         sql = """
             SELECT DISTINCT ON (lower(btrim(e.thema)))
                    e.id, e.thema, e.category, e.description
-            FROM events e
+            FROM visible_events e
             JOIN locations l ON l.id = e.location_id
             WHERE l.lat IS NOT NULL AND e.thema IS NOT NULL
             ORDER BY lower(btrim(e.thema)), e.id ASC
@@ -218,7 +218,7 @@ class EventRepository:
             SELECT ec.event_id, e.thema, ec.note, ec.selected_by, ec.selected_at,
                    e.datum, e.von, l.name AS location
             FROM editors_choice ec
-            JOIN events e ON e.id = ec.event_id
+            JOIN visible_events e ON e.id = ec.event_id
             JOIN locations l ON l.id = e.location_id
             ORDER BY ec.selected_at DESC
             LIMIT %s
