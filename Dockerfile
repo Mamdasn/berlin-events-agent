@@ -1,14 +1,14 @@
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim-trixie@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159 AS builder
 
 ENV PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY requirements.lock .
 RUN python -m venv /venv \
-    && /venv/bin/pip install -r requirements.txt
+    && /venv/bin/pip install --require-hashes -r requirements.lock
 
-FROM python:3.12-slim
+FROM python:3.12-slim-trixie@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -34,7 +34,7 @@ EXPOSE 8000
 
 CMD python -c "from agent import secret_store; secret_store.get_session_secret()" \
     && exec gunicorn wsgi:app \
-       --worker-class uvicorn.workers.UvicornWorker \
+       --worker-class uvicorn_worker.UvicornWorker \
        --workers 2 \
        --bind 0.0.0.0:8000 \
        --timeout 120

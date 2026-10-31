@@ -1,0 +1,26 @@
+name: Dependency validation
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - run: python -m pip install --require-hashes -r requirements.lock
+      - run: python -m pip check
+      - run: python -m pip install pytest httpx pip-audit==2.9.0
+      - run: pytest -q
+      - run: pip-audit --strict --disable-pip --no-deps -r requirements.lock
+      - name: Build the production image
+        run: docker build -t berlin-events-agent:dependency-check .
