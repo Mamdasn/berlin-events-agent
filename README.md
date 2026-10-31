@@ -8,7 +8,7 @@ password and a code from your authenticator app.
 ## Quick setup
 
 ```bash
-pip install --require-hashes -r requirements.lock
+pip install -r requirements.txt
 ```
 
 Make the password hash and save it as `ADMIN_PW_HASH`:
